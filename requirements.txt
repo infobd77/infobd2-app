@@ -1,0 +1,9 @@
+streamlit
+requests
+pandas
+python-pptx
+xlsxwriter
+urllib3
+folium
+streamlit-folium
+openpyxl
