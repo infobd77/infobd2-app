@@ -536,50 +536,48 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 # 1. 대지면적 처리 (평이 있으면 평수값, 아니면 m2값)
                 if "{{대지면적}}" in p_text:
                     val = ctx['plat_py'] if "평" in p_text else ctx['plat_m2']
-                    for run in p.runs:
-                        if "{{대지면적}}" in run.text:
-                            run.text = run.text.replace("{{대지면적}}", val)
+                    # 문단 전체를 교체하여 확실하게 처리 (쪼개짐 방지)
+                    new_text = p_text.replace("{{대지면적}}", val)
+                    p.text = new_text 
                             
                 # 2. 연면적 처리
                 elif "{{연면적}}" in p_text:
                     val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
-                    for run in p.runs:
-                        if "{{연면적}}" in run.text:
-                            run.text = run.text.replace("{{연면적}}", val)
+                    new_text = p_text.replace("{{연면적}}", val)
+                    p.text = new_text
                             
                 # 3. 건축면적 처리 (누락된 부분 해결)
                 elif "{{건축면적}}" in p_text:
                     val = ctx['arch_py'] if "평" in p_text else ctx['arch_m2']
-                    for run in p.runs:
-                        if "{{건축면적}}" in run.text:
-                            run.text = run.text.replace("{{건축면적}}", val)
+                    new_text = p_text.replace("{{건축면적}}", val)
+                    p.text = new_text
                             
-                # 4. 지상면적 처리 (보통 연면적과 동일하거나 별도)
+                # 4. 지상면적 처리
                 elif "{{지상면적}}" in p_text:
                     val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
-                    for run in p.runs:
-                        if "{{지상면적}}" in run.text:
-                            run.text = run.text.replace("{{지상면적}}", val)
+                    new_text = p_text.replace("{{지상면적}}", val)
+                    p.text = new_text
 
                 # 5. 준공년도 처리 (뒤에 m2가 붙어있으면 삭제)
                 elif "{{준공년도}}" in p_text:
-                    # 먼저 플레이스홀더 교체
-                    for run in p.runs:
-                        if "{{준공년도}}" in run.text:
-                            run.text = run.text.replace("{{준공년도}}", ctx['use_date'])
-                    
-                    # 문단 전체에서 '날짜+㎡' 패턴이 보이면 ㎡ 삭제
-                    # 예: "1980.01.01㎡" -> "1980.01.01"
+                    new_text = p_text.replace("{{준공년도}}", ctx['use_date'])
+                    # '날짜+㎡' 패턴 삭제
                     check_str = ctx['use_date'] + "㎡"
-                    if check_str in p.text:
-                        p.text = p.text.replace(check_str, ctx['use_date'])
+                    if check_str in new_text:
+                        new_text = new_text.replace("㎡", "")
+                    p.text = new_text
 
                 # 6. 나머지 일반 데이터 교체
                 else:
-                    for run in p.runs:
-                        for k, v in mapper.items():
-                            if k in run.text:
-                                run.text = run.text.replace(k, str(v))
+                    full_text = p.text
+                    replaced = False
+                    for k, v in mapper.items():
+                        if k in full_text:
+                            full_text = full_text.replace(k, str(v))
+                            replaced = True
+                    
+                    if replaced:
+                        p.text = full_text
         
         # --- 4. 모든 슬라이드 순회 ---
         for slide in prs.slides:
