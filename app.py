@@ -7,7 +7,6 @@ from pptx import Presentation
 from pptx.util import Cm, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-# [수정됨] MSO_SHAPE_TYPE 추가
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 import xlsxwriter
 from urllib.parse import quote_plus
@@ -425,35 +424,54 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 수정됨 - 템플릿 지원 기능 추가]
+# [PPT 생성 함수 수정됨 - 템플릿 표/그룹 정밀 탐색 기능 탑재]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img, template_binary=None):
     # =========================================================
-    # [NEW] 1. 템플릿 파일이 제공된 경우 (9장짜리 양식 자동 채우기)
+    # [NEW] 1. 템플릿 파일이 제공된 경우 (업로드한 양식 자동 채우기)
     # =========================================================
     if template_binary:
         prs = Presentation(template_binary)
         
-        # 데이터 전처리
+        # --- 1. 데이터 전처리 ---
         bld_name = info.get('bldNm')
         if not bld_name or bld_name == '-':
             dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
             bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
             
+        # 평당 공시지가 계산
         lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
         
-        # 교체할 데이터 맵핑 (여기에 필요한 데이터를 모두 정의합니다)
+        # 공시지가 총액 계산 (단위: 억)
+        total_lp_val = land_price * info['platArea'] if land_price and info['platArea'] else 0
+        total_lp_str = f"{total_lp_val/100000000:,.1f}억" if total_lp_val > 0 else "-"
+
+        # AI 분석 내용 줄바꿈 처리
+        ai_points_str = "\n".join(selling_points[:4]) if selling_points else "분석된 특징이 없습니다."
+
+        # 면적 평 환산 (소수점 1자리)
+        plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "0"
+        tot_py = f"{info['totArea'] * 0.3025:,.1f}" if info['totArea'] else "0"
+        arch_py = f"{info.get('archArea', 0) * 0.3025:,.1f}" if info.get('archArea') else "0"
+        # 지상면적 (연면적과 동일하게 처리하거나 별도 데이터 있으면 수정)
+        ground_py = tot_py 
+
+        # --- 2. 데이터 맵핑 (템플릿의 {{키워드}}와 정확히 일치해야 함) ---
         data_map = {
+            # 기본 정보
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
             "{{용도지역}}": zoning,
+            "{{AI물건분석내용 4가지 }}": ai_points_str, # 템플릿의 띄어쓰기까지 일치시킴
+
+            # 토지/건물 정보 (숫자만, 단위는 PPT에 이미 있음)
             "{{공시지가}}": f"{land_price:,}" if land_price else "-",
-            "{{공시지가 총액}}": "-", # 추산 필요시 로직 추가
-            "{{대지면적}}": f"{info['platArea']:,}" if info['platArea'] else "-",
+            "{{공시지가 총액}}": total_lp_str,
+            "{{대지면적}}": f"{info['platArea']:,}" if info['platArea'] else "-", # ㎡, 평 둘다 이 키워드면 값만 넣음
             "{{연면적}}": f"{info['totArea']:,}" if info['totArea'] else "-",
-            "{{지상면적}}": f"{info['totArea']:,}", # 보통 연면적과 동일하거나 지상층만 계산
-            "{{건축면적}}": f"{info.get('archArea',0):,}", # XML 파싱시 누락되었다면 0
+            "{{지상면적}}": f"{info['totArea']:,}", 
+            "{{건축면적}}": f"{info.get('archArea',0):,}",
             "{{준공년도}}": info.get('useAprDay', '-'),
-            "{{건물규모}}": f"지하 {info.get('ugrndFlrCnt')}층 / 지상 {info.get('grndFlrCnt')}층",
+            "{{건물규모}}": f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F",
             "{{건폐율}}": f"{info.get('bcRat', 0)}%",
             "{{용적률}}": f"{info.get('vlRat', 0)}%",
             "{{승강기}}": info.get('rideUseElvtCnt', '-'),
@@ -461,43 +479,60 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
             
-            # 금융 정보
-            "{{보증금}}": f"{finance['deposit']:,}만원" if finance['deposit'] else "-",
-            "{{월임대료}}": f"{finance['rent']:,}만원" if finance['rent'] else "-",
-            "{{관리비}}": f"{finance['maintenance']:,}만원" if finance['maintenance'] else "-",
+            # 금융 정보 (단위 포함 여부 확인 필요, 여기선 숫자만)
+            "{{보증금}}": f"{finance['deposit']:,}" if finance['deposit'] else "-",
+            "{{월임대료}}": f"{finance['rent']:,}" if finance['rent'] else "-",
+            "{{관리비}}": f"{finance['maintenance']:,}" if finance['maintenance'] else "-",
             "{{수익률}}": f"{finance['yield']:.1f}%" if finance['yield'] else "-",
-            "{{융자금}}": f"{finance['loan']:,}억원" if finance['loan'] else "-",
-            "{{매매금액}}": f"{finance['price']:,}억원" if finance['price'] else "-",
-            "{{대지평단가}}": finance.get('land_pyeong_price', '-')
+            "{{융자금}}": f"{finance['loan']:,}" if finance['loan'] else "-",
+            "{{매매금액}}": f"{finance['price']:,}" if finance['price'] else "-",
+            "{{대지평단가}}": finance.get('land_pyeong_price', '-'),
+            
+            # 미래가치 (간단 문구)
+            "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
         }
+
+        # --- 3. 내부 재귀 함수: 표, 그룹, 텍스트 상자 모두 탐색 ---
+        def replace_text_in_shape(shape, mapper):
+            # A. 그룹(Group)인 경우 -> 재귀 호출
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                for child_shape in shape.shapes:
+                    replace_text_in_shape(child_shape, mapper)
+                return
+
+            # B. 표(Table)인 경우 -> 셀 하나하나 탐색
+            if shape.has_table:
+                for row in shape.table.rows:
+                    for cell in row.cells:
+                        if cell.text_frame:
+                            replace_text_in_frame(cell.text_frame, mapper)
+                return
+
+            # C. 텍스트 상자인 경우 -> 텍스트 교체
+            if shape.has_text_frame:
+                replace_text_in_frame(shape.text_frame, mapper)
+
+        def replace_text_in_frame(text_frame, mapper):
+            # 문단(paragraph) 단위 순회
+            for paragraph in text_frame.paragraphs:
+                # 런(run) 단위 순회 (서식 유지 위함)
+                for run in paragraph.runs:
+                    for key, val in mapper.items():
+                        if key in run.text:
+                            # 값을 문자열로 변환하여 교체
+                            run.text = run.text.replace(key, str(val))
         
-        # 모든 슬라이드의 텍스트 박스를 순회하며 치환
+        # --- 4. 모든 슬라이드 순회 및 실행 ---
         for slide in prs.slides:
             for shape in slide.shapes:
-                # [수정] MSO_SHAPE -> MSO_SHAPE_TYPE으로 변경
-                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                    for s in shape.shapes:
-                        if s.has_text_frame:
-                            for p in s.text_frame.paragraphs:
-                                for run in p.runs:
-                                    for key, val in data_map.items():
-                                        if key in run.text:
-                                            run.text = run.text.replace(key, str(val))
-                                            
-                if shape.has_text_frame:
-                    for p in shape.text_frame.paragraphs:
-                        for run in p.runs:
-                            for key, val in data_map.items():
-                                if key in run.text:
-                                    # 폰트 스타일 유지를 위해 run.text만 교체
-                                    run.text = run.text.replace(key, str(val))
-                                    
+                replace_text_in_shape(shape, data_map)
+
         output = BytesIO()
         prs.save(output)
         return output.getvalue()
 
     # =========================================================
-    # [EXISTING] 2. 템플릿이 없는 경우 (기존 1장짜리 코드 유지)
+    # [EXISTING] 2. 템플릿이 없는 경우 (기존 코드 유지)
     # =========================================================
     prs = Presentation()
     prs.slide_width = Cm(21.0)
