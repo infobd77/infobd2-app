@@ -7,7 +7,8 @@ from pptx import Presentation
 from pptx.util import Cm, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.enum.shapes import MSO_SHAPE
+# [수정됨] MSO_SHAPE_TYPE 추가
+from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 import xlsxwriter
 from urllib.parse import quote_plus
 import time
@@ -473,8 +474,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         # 모든 슬라이드의 텍스트 박스를 순회하며 치환
         for slide in prs.slides:
             for shape in slide.shapes:
-                # 그룹화된 도형 처리
-                if shape.shape_type == MSO_SHAPE.GROUP:
+                # [수정] MSO_SHAPE -> MSO_SHAPE_TYPE으로 변경
+                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
                     for s in shape.shapes:
                         if s.has_text_frame:
                             for p in s.text_frame.paragraphs:
