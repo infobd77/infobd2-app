@@ -426,7 +426,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 수정됨 - 지능형 데이터 교체 및 단위 보정]
+# [PPT 생성 함수 수정됨 - 폰트 크기 10pt 강제 적용]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img, template_binary=None):
     # =========================================================
     # [NEW] 1. 템플릿 파일이 제공된 경우 (9장짜리 양식 자동 채우기)
@@ -511,7 +511,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물사진}}": ""
         }
 
-        # --- 3. 내부 재귀 함수 (스마트 교체 로직) ---
+        # --- 3. 내부 재귀 함수 (스마트 교체 로직 + 폰트 크기 10pt 고정) ---
         def replace_text_in_shape(shape, mapper, ctx):
             if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
                 for child_shape in shape.shapes:
@@ -539,24 +539,28 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     # 문단 전체를 교체하여 확실하게 처리 (쪼개짐 방지)
                     new_text = p_text.replace("{{대지면적}}", val)
                     p.text = new_text 
+                    for r in p.runs: r.font.size = Pt(10)
                             
                 # 2. 연면적 처리
                 elif "{{연면적}}" in p_text:
                     val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
                     new_text = p_text.replace("{{연면적}}", val)
                     p.text = new_text
+                    for r in p.runs: r.font.size = Pt(10)
                             
                 # 3. 건축면적 처리 (누락된 부분 해결)
                 elif "{{건축면적}}" in p_text:
                     val = ctx['arch_py'] if "평" in p_text else ctx['arch_m2']
                     new_text = p_text.replace("{{건축면적}}", val)
                     p.text = new_text
+                    for r in p.runs: r.font.size = Pt(10)
                             
                 # 4. 지상면적 처리
                 elif "{{지상면적}}" in p_text:
                     val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
                     new_text = p_text.replace("{{지상면적}}", val)
                     p.text = new_text
+                    for r in p.runs: r.font.size = Pt(10)
 
                 # 5. 준공년도 처리 (뒤에 m2가 붙어있으면 삭제)
                 elif "{{준공년도}}" in p_text:
@@ -566,6 +570,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if check_str in new_text:
                         new_text = new_text.replace("㎡", "")
                     p.text = new_text
+                    for r in p.runs: r.font.size = Pt(10)
 
                 # 6. 나머지 일반 데이터 교체
                 else:
@@ -578,6 +583,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     
                     if replaced:
                         p.text = full_text
+                        for r in p.runs: r.font.size = Pt(10)
         
         # --- 4. 모든 슬라이드 순회 ---
         for slide in prs.slides:
