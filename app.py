@@ -546,9 +546,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(12) # 12pt
-                            r.font.color.rgb = deep_blue # 파란색
-                            r.font.bold = True # 굵게
+                            r.font.size = Pt(10)
+                            r.font.color.rgb = deep_blue # 평수는 파란색
                     else:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -558,9 +557,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if "평" in p_text:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(12) # 12pt
-                            r.font.color.rgb = deep_blue # 파란색
-                            r.font.bold = True # 굵게
+                            r.font.size = Pt(10)
+                            r.font.color.rgb = deep_blue
                     else:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -591,13 +589,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     p.text = new_text
                     for r in p.runs: r.font.size = Pt(10)
 
-                # 6. 전문가 투자포인트
-                elif "{{AI물건분석내용 4가지 }}" in p_text:
-                    p.text = p_text.replace("{{AI물건분석내용 4가지 }}", mapper["{{AI물건분석내용 4가지 }}"])
-                    for r in p.runs: 
-                        r.font.size = Pt(12) # 12pt로 설정
-
-                # 7. 일반 데이터
+                # 6. 일반 데이터
                 else:
                     replaced = False
                     # 키가 포함되어 있는지 확인
@@ -1279,46 +1271,7 @@ if addr_input:
                 naver_map_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
                 st.markdown(f"**[📍 네이버 지도에서 위치 확인하기 (Click)]({naver_map_url})**")
 
-                c_map1, c_map2 = st.columns(2)
-                with c_map1:
-                    st.write("##### 📍 카카오 지도 (Kakao Map)")
-                    kakao_html = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8"/>
-                        <style>
-                            html, body, #map {{ margin: 0; padding: 0; width: 100%; height: 100%; }}
-                        </style>
-                    </head>
-                    <body>
-                        <div id="map" style="width:100%;height:350px;"></div>
-                        <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&autoload=false"></script>
-                        <script>
-                            kakao.maps.load(function() {{
-                                var container = document.getElementById('map');
-                                var options = {{
-                                    center: new kakao.maps.LatLng({location['lat']}, {location['lng']}),
-                                    level: 3
-                                }};
-                                var map = new kakao.maps.Map(container, options);
-                                var markerPosition  = new kakao.maps.LatLng({location['lat']}, {location['lng']}); 
-                                var marker = new kakao.maps.Marker({{
-                                    position: markerPosition
-                                }});
-                                marker.setMap(map);
-                            }});
-                        </script>
-                    </body>
-                    </html>
-                    """
-                    components.html(kakao_html, height=370)
-                        
-                with c_map2:
-                    st.write("##### 📐 지적도(땅 모양)")
-                    cadastral_img = get_cadastral_map_image(location['lat'], location['lng'])
-                    if cadastral_img: st.image(cadastral_img, use_container_width=True, caption="해당 지번 지적도")
-                    else: st.error("지적도 로딩 실패")
+                # (카카오 지도 및 지적도 시각화 삭제됨)
                 
                 finance_data = {
                     "price": price_val, "deposit": deposit_val, "rent": rent_val, 
