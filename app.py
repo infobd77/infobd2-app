@@ -388,8 +388,9 @@ def parse_xml_response(content):
             "platArea_ppt": format_area_ppt(item.findtext('platArea', '0')),
             "totArea_ppt": format_area_ppt(item.findtext('totArea', '0')),
             "archArea_ppt": format_area_ppt(item.findtext('archArea', '0')),
-            # [추가] 값 자체를 저장 (나중에 계산용)
+            # [추가] 값 자체를 저장
             "archArea_val": float(item.findtext('archArea', '0') or 0),
+            "groundArea": float(item.findtext('vlRatEstmTotArea', '0') or 0), # 지상면적(용적률산정연면적)
             "groundArea_ppt": format_area_ppt(item.findtext('vlRatEstmTotArea', '0')),
             "ugrndFlrCnt": item.findtext('ugrndFlrCnt', '0'),
             "grndFlrCnt": item.findtext('grndFlrCnt', '0'),
@@ -426,7 +427,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 수정됨 - 폰트 크기 10pt 강제 적용]
+# [PPT 생성 함수 수정됨 - 지능형 데이터 교체 및 단위 보정 + 스타일 적용]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img, template_binary=None):
     # =========================================================
     # [NEW] 1. 템플릿 파일이 제공된 경우 (9장짜리 양식 자동 채우기)
@@ -434,6 +435,11 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     if template_binary:
         prs = Presentation(template_binary)
         
+        # [컬러 정의]
+        deep_blue = RGBColor(0, 51, 153) # 진한 파란색
+        deep_red = RGBColor(204, 0, 0)   # 진한 빨간색
+        black = RGBColor(0, 0, 0)
+
         # --- 1. 데이터 전처리 (단위별 계산값 미리 준비) ---
         bld_name = info.get('bldNm')
         if not bld_name or bld_name == '-':
@@ -446,35 +452,38 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         ai_points_str = "\n".join(selling_points[:4]) if selling_points else "분석된 특징이 없습니다."
 
         # 면적 값 준비 (m2 vs 평)
-        # 1. 대지
         plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
         plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "-"
         
-        # 2. 연면적
         tot_m2 = f"{info['totArea']:,}" if info['totArea'] else "-"
         tot_py = f"{info['totArea'] * 0.3025:,.1f}" if info['totArea'] else "-"
         
-        # 3. 건축면적 (누락 방지 로직: 0이면 역산 시도)
         arch_val = info.get('archArea_val', 0)
-        # 만약 건축면적이 0인데 건폐율과 대지면적이 있다면 역산
         if arch_val == 0 and info['platArea'] > 0 and info['bcRat'] > 0:
             arch_val = info['platArea'] * (info['bcRat'] / 100)
-            
         arch_m2 = f"{arch_val:,.1f}"
         arch_py = f"{arch_val * 0.3025:,.1f}"
         
-        # 4. 날짜
+        # [수정] 지상면적 (용적률산정연면적 사용)
+        ground_val = info.get('groundArea', 0)
+        # 만약 용적률산정연면적이 0이면 대략 (연면적 - (지하층수*건축면적)) 정도로 추정하거나 그냥 연면적 사용
+        if ground_val == 0 and info['totArea'] > 0:
+             ground_val = info['totArea'] # 데이터 없으면 연면적 대체
+        ground_m2 = f"{ground_val:,}"
+        ground_py = f"{ground_val * 0.3025:,.1f}"
+        
         use_date = info.get('useAprDay', '-')
 
-        # 컨텍스트 딕셔너리 (함수 내부에서 사용)
+        # 컨텍스트 딕셔너리
         ctx_vals = {
             'plat_m2': plat_m2, 'plat_py': plat_py,
             'tot_m2': tot_m2, 'tot_py': tot_py,
             'arch_m2': arch_m2, 'arch_py': arch_py,
+            'ground_m2': ground_m2, 'ground_py': ground_py,
             'use_date': use_date
         }
 
-        # --- 2. 일반 데이터 맵핑 (면적 제외) ---
+        # --- 2. 일반 데이터 맵핑 (단위 추가) ---
         data_map = {
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
@@ -483,11 +492,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
 
             "{{공시지가}}": f"{land_price:,}" if land_price else "-",
             "{{공시지가 총액}}": total_lp_str,
-            "{{지상면적}}": tot_m2, # 지상면적은 보통 연면적 m2를 따라감
+            # 면적은 별도 처리
             
-            # 주의: 면적 관련 키워드({{대지면적}}, {{연면적}} 등)는 아래 replace_text_in_frame에서 별도 처리함
-            
-            "{{준공년도}}": use_date, # 이것도 별도 처리하지만 맵에 둠
+            "{{준공년도}}": use_date,
             "{{건물규모}}": f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F",
             "{{건폐율}}": f"{info.get('bcRat', 0)}%",
             "{{용적률}}": f"{info.get('vlRat', 0)}%",
@@ -496,12 +503,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
             
-            "{{보증금}}": f"{finance['deposit']:,}" if finance['deposit'] else "-",
-            "{{월임대료}}": f"{finance['rent']:,}" if finance['rent'] else "-",
-            "{{관리비}}": f"{finance['maintenance']:,}" if finance['maintenance'] else "-",
+            # [수정] 단위 추가
+            "{{보증금}}": f"{finance['deposit']:,}만원" if finance['deposit'] else "-",
+            "{{월임대료}}": f"{finance['rent']:,}만원" if finance['rent'] else "-",
+            "{{관리비}}": f"{finance['maintenance']:,}만원" if finance['maintenance'] else "-",
             "{{수익률}}": f"{finance['yield']:.1f}%" if finance['yield'] else "-",
-            "{{융자금}}": f"{finance['loan']:,}" if finance['loan'] else "-",
-            "{{매매금액}}": f"{finance['price']:,}" if finance['price'] else "-",
+            "{{융자금}}": f"{finance['loan']:,}억원" if finance['loan'] else "-",
+            "{{매매금액}}": f"{finance['price']:,}억원" if finance['price'] else "-",
             "{{대지평단가}}": finance.get('land_pyeong_price', '-'),
             
             "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
@@ -511,7 +519,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물사진}}": ""
         }
 
-        # --- 3. 내부 재귀 함수 (스마트 교체 로직 + 폰트 크기 10pt 고정) ---
+        # --- 3. 내부 재귀 함수 ---
         def replace_text_in_shape(shape, mapper, ctx):
             if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
                 for child_shape in shape.shapes:
@@ -529,61 +537,99 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 replace_text_in_frame(shape.text_frame, mapper, ctx)
 
         def replace_text_in_frame(text_frame, mapper, ctx):
-            # 문단 단위로 순회하면서 "주변 문맥(평 vs m2)"을 파악
             for p in text_frame.paragraphs:
-                p_text = p.text  # 문단 전체 텍스트
+                p_text = p.text
                 
-                # 1. 대지면적 처리 (평이 있으면 평수값, 아니면 m2값)
+                # [면적 처리 및 스타일링]
+                # 1. 대지면적
                 if "{{대지면적}}" in p_text:
-                    val = ctx['plat_py'] if "평" in p_text else ctx['plat_m2']
-                    # 문단 전체를 교체하여 확실하게 처리 (쪼개짐 방지)
-                    new_text = p_text.replace("{{대지면적}}", val)
-                    p.text = new_text 
-                    for r in p.runs: r.font.size = Pt(10)
+                    if "평" in p_text:
+                        p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
+                        for r in p.runs: 
+                            r.font.size = Pt(10)
+                            r.font.color.rgb = deep_blue # 평수는 파란색
+                    else:
+                        p.text = p_text.replace("{{대지면적}}", ctx['plat_m2'])
+                        for r in p.runs: r.font.size = Pt(10)
                             
-                # 2. 연면적 처리
+                # 2. 연면적
                 elif "{{연면적}}" in p_text:
-                    val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
-                    new_text = p_text.replace("{{연면적}}", val)
-                    p.text = new_text
-                    for r in p.runs: r.font.size = Pt(10)
+                    if "평" in p_text:
+                        p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
+                        for r in p.runs: 
+                            r.font.size = Pt(10)
+                            r.font.color.rgb = deep_blue
+                    else:
+                        p.text = p_text.replace("{{연면적}}", ctx['tot_m2'])
+                        for r in p.runs: r.font.size = Pt(10)
                             
-                # 3. 건축면적 처리 (누락된 부분 해결)
+                # 3. 건축면적
                 elif "{{건축면적}}" in p_text:
-                    val = ctx['arch_py'] if "평" in p_text else ctx['arch_m2']
-                    new_text = p_text.replace("{{건축면적}}", val)
-                    p.text = new_text
-                    for r in p.runs: r.font.size = Pt(10)
+                    if "평" in p_text:
+                        p.text = p_text.replace("{{건축면적}}", ctx['arch_py'])
+                        for r in p.runs: r.font.size = Pt(10)
+                    else:
+                        p.text = p_text.replace("{{건축면적}}", ctx['arch_m2'])
+                        for r in p.runs: r.font.size = Pt(10)
                             
-                # 4. 지상면적 처리
+                # 4. 지상면적
                 elif "{{지상면적}}" in p_text:
-                    val = ctx['tot_py'] if "평" in p_text else ctx['tot_m2']
-                    new_text = p_text.replace("{{지상면적}}", val)
-                    p.text = new_text
-                    for r in p.runs: r.font.size = Pt(10)
+                    if "평" in p_text:
+                        p.text = p_text.replace("{{지상면적}}", ctx['ground_py'])
+                        for r in p.runs: r.font.size = Pt(10)
+                    else:
+                        p.text = p_text.replace("{{지상면적}}", ctx['ground_m2'])
+                        for r in p.runs: r.font.size = Pt(10)
 
-                # 5. 준공년도 처리 (뒤에 m2가 붙어있으면 삭제)
+                # 5. 준공년도
                 elif "{{준공년도}}" in p_text:
                     new_text = p_text.replace("{{준공년도}}", ctx['use_date'])
-                    # '날짜+㎡' 패턴 삭제
-                    check_str = ctx['use_date'] + "㎡"
-                    if check_str in new_text:
+                    if ctx['use_date'] + "㎡" in new_text:
                         new_text = new_text.replace("㎡", "")
                     p.text = new_text
                     for r in p.runs: r.font.size = Pt(10)
 
-                # 6. 나머지 일반 데이터 교체
+                # 6. 일반 데이터
                 else:
-                    full_text = p.text
                     replaced = False
-                    for k, v in mapper.items():
-                        if k in full_text:
-                            full_text = full_text.replace(k, str(v))
-                            replaced = True
+                    # 키가 포함되어 있는지 확인
+                    found_key = None
+                    for k in mapper.keys():
+                        if k in p_text:
+                            found_key = k
+                            break
                     
-                    if replaced:
-                        p.text = full_text
-                        for r in p.runs: r.font.size = Pt(10)
+                    if found_key:
+                        val = str(mapper[found_key])
+                        p.text = p_text.replace(found_key, val)
+                        
+                        # [스타일 적용]
+                        for r in p.runs:
+                            # 기본 10pt
+                            r.font.size = Pt(10)
+                            
+                            # 특수 스타일
+                            if found_key == "{{빌딩이름}}":
+                                r.font.size = Pt(25)
+                                r.font.bold = True
+                            
+                            elif found_key in ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]:
+                                r.font.size = Pt(12)
+                                
+                            elif found_key == "{{수익률}}":
+                                r.font.size = Pt(12)
+                                r.font.color.rgb = deep_red
+                                r.font.bold = True
+                                
+                            elif found_key == "{{매매금액}}":
+                                r.font.size = Pt(16)
+                                r.font.color.rgb = deep_blue
+                                r.font.bold = True
+                                
+                            elif found_key == "{{대지평단가}}":
+                                r.font.size = Pt(10)
+                                r.font.color.rgb = deep_blue
+                                r.font.bold = True
         
         # --- 4. 모든 슬라이드 순회 ---
         for slide in prs.slides:
