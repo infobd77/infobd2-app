@@ -454,9 +454,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         tot_m2 = f"{info['totArea']:,}" if info['totArea'] else "-"
         tot_py = f"{info['totArea'] * 0.3025:,.1f}" if info['totArea'] else "-"
         
-        # 3. 건축면적 (누락 방지 로직: 0이면 0으로라도 표시, 계산)
+        # 3. 건축면적 (누락 방지 로직: 0이면 역산 시도)
         arch_val = info.get('archArea_val', 0)
-        arch_m2 = f"{arch_val:,}"
+        # 만약 건축면적이 0인데 건폐율과 대지면적이 있다면 역산
+        if arch_val == 0 and info['platArea'] > 0 and info['bcRat'] > 0:
+            arch_val = info['platArea'] * (info['bcRat'] / 100)
+            
+        arch_m2 = f"{arch_val:,.1f}"
         arch_py = f"{arch_val * 0.3025:,.1f}"
         
         # 4. 날짜
