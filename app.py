@@ -546,8 +546,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(10)
-                            r.font.color.rgb = deep_blue # 평수는 파란색
+                            r.font.size = Pt(12) # 12pt
+                            r.font.color.rgb = deep_blue # 파란색
+                            r.font.bold = True # 굵게
                     else:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -557,8 +558,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if "평" in p_text:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(10)
-                            r.font.color.rgb = deep_blue
+                            r.font.size = Pt(12) # 12pt
+                            r.font.color.rgb = deep_blue # 파란색
+                            r.font.bold = True # 굵게
                     else:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -589,7 +591,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     p.text = new_text
                     for r in p.runs: r.font.size = Pt(10)
 
-                # 6. 일반 데이터
+                # 6. 전문가 투자포인트
+                elif "{{AI물건분석내용 4가지 }}" in p_text:
+                    p.text = p_text.replace("{{AI물건분석내용 4가지 }}", mapper["{{AI물건분석내용 4가지 }}"])
+                    for r in p.runs: 
+                        r.font.size = Pt(12) # 12pt로 설정
+
+                # 7. 일반 데이터
                 else:
                     replaced = False
                     # 키가 포함되어 있는지 확인
