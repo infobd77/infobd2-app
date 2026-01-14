@@ -127,14 +127,12 @@ st.markdown("""
 # =========================================================
 # [설정] 인증키 및 전역 변수 초기화
 # =========================================================
-# [수정] 401 에러 해결을 위해 Decoding 키(==)로 복구 (Python 코드는 Decoding 키가 필수입니다)
 USER_KEY = "Xl5W1ALUkfEhomDR8CBUoqBMRXphLTIB7CuTto0mjsg0CQQspd7oUEmAwmw724YtkjnV05tdEx6y4yQJCe3W0g=="
 VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 KAKAO_API_KEY = "2a3330b822a5933035eacec86061ee41"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
 if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = []
-# [유지] 초기값 0으로 설정 (빈칸 처리용)
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
@@ -174,7 +172,6 @@ def render_styled_block(label, value, is_area=False):
     </div>
     """, unsafe_allow_html=True)
 
-# [유지] 0일 경우 빈칸으로 표시하는 comma_input 함수
 def comma_input(label, unit, key, default_val, help_text=""):
     st.markdown(f"""
         <div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>
@@ -188,12 +185,10 @@ def comma_input(label, unit, key, default_val, help_text=""):
             st.session_state[key] = default_val
         current_val = st.session_state[key]
         
-        # 값이 0이면 빈 문자열로 표시, 아니면 콤마 포맷
         formatted_val = f"{current_val:,}" if current_val != 0 else ""
         
         val_input = st.text_input(label, value=formatted_val, key=f"{key}_widget", label_visibility="hidden")
         try:
-            # 입력값이 없으면 0으로 처리
             if val_input.strip() == "":
                 new_val = 0
             else:
@@ -429,8 +424,80 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성]
-def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
+# [PPT 생성 함수 수정됨 - 템플릿 지원 기능 추가]
+def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img, template_binary=None):
+    # =========================================================
+    # [NEW] 1. 템플릿 파일이 제공된 경우 (9장짜리 양식 자동 채우기)
+    # =========================================================
+    if template_binary:
+        prs = Presentation(template_binary)
+        
+        # 데이터 전처리
+        bld_name = info.get('bldNm')
+        if not bld_name or bld_name == '-':
+            dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
+            bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
+            
+        lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
+        
+        # 교체할 데이터 맵핑 (여기에 필요한 데이터를 모두 정의합니다)
+        data_map = {
+            "{{빌딩이름}}": bld_name,
+            "{{소재지}}": full_addr,
+            "{{용도지역}}": zoning,
+            "{{공시지가}}": f"{land_price:,}" if land_price else "-",
+            "{{공시지가 총액}}": "-", # 추산 필요시 로직 추가
+            "{{대지면적}}": f"{info['platArea']:,}" if info['platArea'] else "-",
+            "{{연면적}}": f"{info['totArea']:,}" if info['totArea'] else "-",
+            "{{지상면적}}": f"{info['totArea']:,}", # 보통 연면적과 동일하거나 지상층만 계산
+            "{{건축면적}}": f"{info.get('archArea',0):,}", # XML 파싱시 누락되었다면 0
+            "{{준공년도}}": info.get('useAprDay', '-'),
+            "{{건물규모}}": f"지하 {info.get('ugrndFlrCnt')}층 / 지상 {info.get('grndFlrCnt')}층",
+            "{{건폐율}}": f"{info.get('bcRat', 0)}%",
+            "{{용적률}}": f"{info.get('vlRat', 0)}%",
+            "{{승강기}}": info.get('rideUseElvtCnt', '-'),
+            "{{주차대수}}": info.get('parking', '-'),
+            "{{건물주구조}}": info.get('strctCdNm', '-'),
+            "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
+            
+            # 금융 정보
+            "{{보증금}}": f"{finance['deposit']:,}만원" if finance['deposit'] else "-",
+            "{{월임대료}}": f"{finance['rent']:,}만원" if finance['rent'] else "-",
+            "{{관리비}}": f"{finance['maintenance']:,}만원" if finance['maintenance'] else "-",
+            "{{수익률}}": f"{finance['yield']:.1f}%" if finance['yield'] else "-",
+            "{{융자금}}": f"{finance['loan']:,}억원" if finance['loan'] else "-",
+            "{{매매금액}}": f"{finance['price']:,}억원" if finance['price'] else "-",
+            "{{대지평단가}}": finance.get('land_pyeong_price', '-')
+        }
+        
+        # 모든 슬라이드의 텍스트 박스를 순회하며 치환
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                # 그룹화된 도형 처리
+                if shape.shape_type == MSO_SHAPE.GROUP:
+                    for s in shape.shapes:
+                        if s.has_text_frame:
+                            for p in s.text_frame.paragraphs:
+                                for run in p.runs:
+                                    for key, val in data_map.items():
+                                        if key in run.text:
+                                            run.text = run.text.replace(key, str(val))
+                                            
+                if shape.has_text_frame:
+                    for p in shape.text_frame.paragraphs:
+                        for run in p.runs:
+                            for key, val in data_map.items():
+                                if key in run.text:
+                                    # 폰트 스타일 유지를 위해 run.text만 교체
+                                    run.text = run.text.replace(key, str(val))
+                                    
+        output = BytesIO()
+        prs.save(output)
+        return output.getvalue()
+
+    # =========================================================
+    # [EXISTING] 2. 템플릿이 없는 경우 (기존 1장짜리 코드 유지)
+    # =========================================================
     prs = Presentation()
     prs.slide_width = Cm(21.0)
     prs.slide_height = Cm(29.7)
@@ -926,7 +993,7 @@ if addr_input:
                 tot_price_per_py = 0
                 
                 if land_py > 0: land_price_per_py = (price_won / land_py) / 10000 
-                if tot_py > 0: tot_price_per_py = (price_won / tot_py) / 10000       
+                if tot_py > 0: tot_price_per_py = (price_won / tot_py) / 10000        
 
                 cp1, cp2 = st.columns(2)
                 with cp1:
@@ -1059,12 +1126,9 @@ if addr_input:
                 naver_map_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
                 st.markdown(f"**[📍 네이버 지도에서 위치 확인하기 (Click)]({naver_map_url})**")
 
-                c_map1, c_map2, c_ppt, c_xls = st.columns([1.5, 1.5, 1, 1])
+                c_map1, c_map2 = st.columns(2)
                 with c_map1:
-                    # [수정] 카카오 지도로 변경 (로딩 타이밍 문제 해결)
                     st.write("##### 📍 카카오 지도 (Kakao Map)")
-                    # autoload=false 파라미터와 callback 함수를 사용하여 
-                    # 스크립트 로딩 완료 후 지도를 그리도록 수정 (빈 화면 방지)
                     kakao_html = f"""
                     <!DOCTYPE html>
                     <html>
@@ -1113,12 +1177,24 @@ if addr_input:
                 z_val = st.session_state.get('zoning', '') if isinstance(st.session_state.get('zoning', ''), str) else ""
                 current_summary = st.session_state.get('selling_summary', [])
 
-                # uploaded_file이 없으면 None으로 처리 (파일이 없어도 다운로드는 가능하게)
                 file_to_pass = uploaded_file if 'uploaded_file' in locals() else None
 
+                st.markdown("---")
+                
+                # [수정됨] 템플릿 업로드 기능 추가
+                c_ppt, c_xls = st.columns([1, 1])
+                
                 with c_ppt:
                     st.write("##### 📥 PPT 저장")
-                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, file_to_pass)
+                    
+                    # 템플릿 업로더 추가
+                    ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
+                    
+                    if ppt_template:
+                        st.success("✅ 템플릿 적용됨 (9장 생성 모드)")
+                        
+                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, file_to_pass, template_binary=ppt_template)
+                    
                     st.download_button(label="PPT 다운로드", data=pptx_file, file_name=f"부동산분석_{addr_input}.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True)
                 
                 with c_xls:
