@@ -219,7 +219,7 @@ def format_area_ppt(val_str):
         val = float(val_str)
         if val == 0: return "-"
         pyung = val * 0.3025
-        return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
+        return f"{val:,.2f}㎡" # PPT에서는 면적만 깔끔하게
     except: return "-"
 
 # --- [AI 인사이트 생성] ---
@@ -424,10 +424,10 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 수정됨 - 템플릿 표/그룹 정밀 탐색 기능 탑재]
+# [PPT 생성 함수 수정됨 - 강력한 데이터 교체 로직 적용]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img, template_binary=None):
     # =========================================================
-    # [NEW] 1. 템플릿 파일이 제공된 경우 (업로드한 양식 자동 채우기)
+    # [NEW] 1. 템플릿 파일이 제공된 경우 (9장짜리 양식 자동 채우기)
     # =========================================================
     if template_binary:
         prs = Presentation(template_binary)
@@ -438,35 +438,28 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
             bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
             
-        # 평당 공시지가 계산
         lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
         
-        # 공시지가 총액 계산 (단위: 억)
         total_lp_val = land_price * info['platArea'] if land_price and info['platArea'] else 0
         total_lp_str = f"{total_lp_val/100000000:,.1f}억" if total_lp_val > 0 else "-"
 
-        # AI 분석 내용 줄바꿈 처리
         ai_points_str = "\n".join(selling_points[:4]) if selling_points else "분석된 특징이 없습니다."
 
-        # 면적 평 환산 (소수점 1자리)
         plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "0"
         tot_py = f"{info['totArea'] * 0.3025:,.1f}" if info['totArea'] else "0"
         arch_py = f"{info.get('archArea', 0) * 0.3025:,.1f}" if info.get('archArea') else "0"
-        # 지상면적 (연면적과 동일하게 처리하거나 별도 데이터 있으면 수정)
         ground_py = tot_py 
 
-        # --- 2. 데이터 맵핑 (템플릿의 {{키워드}}와 정확히 일치해야 함) ---
+        # --- 2. 데이터 맵핑 (업로드된 파일 기준 정확한 키워드 매핑) ---
         data_map = {
-            # 기본 정보
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
             "{{용도지역}}": zoning,
-            "{{AI물건분석내용 4가지 }}": ai_points_str, # 템플릿의 띄어쓰기까지 일치시킴
+            "{{AI물건분석내용 4가지 }}": ai_points_str, # 템플릿의 띄어쓰기 유지
 
-            # 토지/건물 정보 (숫자만, 단위는 PPT에 이미 있음)
             "{{공시지가}}": f"{land_price:,}" if land_price else "-",
             "{{공시지가 총액}}": total_lp_str,
-            "{{대지면적}}": f"{info['platArea']:,}" if info['platArea'] else "-", # ㎡, 평 둘다 이 키워드면 값만 넣음
+            "{{대지면적}}": f"{info['platArea']:,}" if info['platArea'] else "-", 
             "{{연면적}}": f"{info['totArea']:,}" if info['totArea'] else "-",
             "{{지상면적}}": f"{info['totArea']:,}", 
             "{{건축면적}}": f"{info.get('archArea',0):,}",
@@ -479,7 +472,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
             
-            # 금융 정보 (단위 포함 여부 확인 필요, 여기선 숫자만)
             "{{보증금}}": f"{finance['deposit']:,}" if finance['deposit'] else "-",
             "{{월임대료}}": f"{finance['rent']:,}" if finance['rent'] else "-",
             "{{관리비}}": f"{finance['maintenance']:,}" if finance['maintenance'] else "-",
@@ -488,19 +480,20 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{매매금액}}": f"{finance['price']:,}" if finance['price'] else "-",
             "{{대지평단가}}": finance.get('land_pyeong_price', '-'),
             
-            # 미래가치 (간단 문구)
             "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
+            "{{위치도}}": "", # 이미지는 별도 처리 필요하나 텍스트는 제거
+            "{{지적도}}": "",
+            "{{건축물대장}}": "",
+            "{{건물사진}}": ""
         }
 
-        # --- 3. 내부 재귀 함수: 표, 그룹, 텍스트 상자 모두 탐색 ---
+        # --- 3. 내부 재귀 함수 (텍스트 쪼개짐 현상 해결 로직 포함) ---
         def replace_text_in_shape(shape, mapper):
-            # A. 그룹(Group)인 경우 -> 재귀 호출
             if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
                 for child_shape in shape.shapes:
                     replace_text_in_shape(child_shape, mapper)
                 return
 
-            # B. 표(Table)인 경우 -> 셀 하나하나 탐색
             if shape.has_table:
                 for row in shape.table.rows:
                     for cell in row.cells:
@@ -508,21 +501,35 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                             replace_text_in_frame(cell.text_frame, mapper)
                 return
 
-            # C. 텍스트 상자인 경우 -> 텍스트 교체
             if shape.has_text_frame:
                 replace_text_in_frame(shape.text_frame, mapper)
 
         def replace_text_in_frame(text_frame, mapper):
-            # 문단(paragraph) 단위 순회
             for paragraph in text_frame.paragraphs:
-                # 런(run) 단위 순회 (서식 유지 위함)
+                # 1. 런(Run) 단위 교체 시도 (서식 보존 최우선)
+                replaced_in_run = False
                 for run in paragraph.runs:
-                    for key, val in mapper.items():
-                        if key in run.text:
-                            # 값을 문자열로 변환하여 교체
-                            run.text = run.text.replace(key, str(val))
+                    for k, v in mapper.items():
+                        if k in run.text:
+                            run.text = run.text.replace(k, str(v))
+                            replaced_in_run = True
+                
+                # 2. 문단 전체 검사 (쪼개진 텍스트 복구 로직)
+                # PPT 내부에서 {{매매}} {{금액}} 처럼 쪼개진 경우 Run단위에서는 못 찾음
+                if not replaced_in_run:
+                    full_text = paragraph.text
+                    for k, v in mapper.items():
+                        if k in full_text:
+                            # 텍스트가 쪼개져 있다면, 문단 전체를 새로 씁니다.
+                            # 첫 번째 Run에 몰아넣고 나머지는 지우는 방식으로 서식 유지 시도
+                            new_text = full_text.replace(k, str(v))
+                            if paragraph.runs:
+                                paragraph.runs[0].text = new_text
+                                # 나머지 런은 비워서 중복 방지
+                                for i in range(1, len(paragraph.runs)):
+                                    paragraph.runs[i].text = ""
         
-        # --- 4. 모든 슬라이드 순회 및 실행 ---
+        # --- 4. 모든 슬라이드 순회 ---
         for slide in prs.slides:
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map)
