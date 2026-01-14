@@ -529,7 +529,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     data = [
         ["소재지", full_addr, "", ""], 
         ["용도", zoning, "공시지가", f"{lp_py:,.0f}만/평"],
-        ["대지", info['platArea_ppt'], "도로", "6M"],
+        ["대지", info['platArea_ppt'], "도로", "M"],
         ["연면적", info['totArea_ppt'], "준공", info['useAprDay']],
         ["지상", info['totArea_ppt'], "규모", f"B{info['ugrndFlrCnt']}/ {info['grndFlrCnt']}F"],
         ["건축", info['archArea_ppt'], "승강기", info['rideUseElvtCnt']],
@@ -634,7 +634,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
 
     # 풋터
     foot = slide.shapes.add_textbox(Cm(0), Cm(28.5), Cm(21.0), Cm(0.7))
-    foot.text_frame.text = "JS 제이에스부동산(주) 김창익 이사 010-6595-5700"
+    foot.text_frame.text = "제이에스부동산중개(주) "
     foot.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     foot.text_frame.paragraphs[0].font.bold = True
     foot.text_frame.paragraphs[0].font.size = Pt(12)
@@ -1124,4 +1124,5 @@ if addr_input:
                 with c_xls:
                     st.write("##### 📥 엑셀 저장")
                     xlsx_file = create_excel(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, file_to_pass)
+
                     st.download_button(label="엑셀 다운로드", data=xlsx_file, file_name=f"부동산분석_{addr_input}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
