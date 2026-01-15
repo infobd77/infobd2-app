@@ -428,7 +428,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 - 꽉 채우기 모드 및 좌표 수정, 폰트 스타일 적용]
+# [PPT 생성 함수 - 꽉 채우기 모드 및 좌표 수정]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
     if template_binary:
         prs = Presentation(template_binary)
@@ -492,7 +492,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{주차대수}}": info.get('parking', '-'),
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
-            # 금액 정보 - 나중에 분리하여 스타일링
             "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
             "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
             "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
@@ -614,6 +613,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                             if found_key == "{{빌딩이름}}":
                                 r.font.size = Pt(25)
                                 r.font.bold = True
+                            elif found_key in ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]:
+                                r.font.size = Pt(12)
                             elif found_key == "{{수익률}}":
                                 r.font.size = Pt(12)
                                 r.font.color.rgb = deep_red
@@ -666,7 +667,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
 
-    # --- [1장짜리 요약본 (No Template) Logic] ---
+    # --- [1장짜리 요약본 (No Template) Logic - 수정: 사진 자체에 테두리 적용] ---
     prs = Presentation()
     prs.slide_width = Cm(21.0)
     prs.slide_height = Cm(29.7)
@@ -691,6 +692,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.alignment = PP_ALIGN.CENTER
 
+    # 1. 건물 사진 (Left)
     img_y = Cm(3.5)
     img_h = Cm(11.5)
     left_x = Cm(1.0)
@@ -705,16 +707,18 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     main_img = images_dict.get('u2')
     if main_img:
         main_img.seek(0)
-        slide.shapes.add_picture(main_img, left_x, img_y, width=col_w, height=img_h)
+        pic = slide.shapes.add_picture(main_img, left_x, img_y, width=col_w, height=img_h)
+        pic.line.visible = True
+        pic.line.color.rgb = RGBColor(200, 200, 200)
+        pic.line.width = Pt(1)
     else:
-        box = slide.shapes.add_textbox(left_x, img_y, col_w, img_h)
-        box.text_frame.text = "" 
-    
-    rect_img = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, img_y, col_w, img_h)
-    rect_img.fill.background()
-    rect_img.line.color.rgb = RGBColor(200, 200, 200)
-    rect_img.line.width = Pt(1)
+        # 사진 없으면 빈 박스 그리기
+        rect_img = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, img_y, col_w, img_h)
+        rect_img.fill.background()
+        rect_img.line.color.rgb = RGBColor(200, 200, 200)
+        rect_img.line.width = Pt(1)
 
+    # 3. 위치도 (Left Bottom)
     map_y = Cm(15.8)
     map_h = Cm(12.0)
 
@@ -728,15 +732,22 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     loc_img = images_dict.get('u1')
     if loc_img:
         loc_img.seek(0)
-        slide.shapes.add_picture(loc_img, left_x, map_y, width=col_w, height=map_h)
+        pic_map = slide.shapes.add_picture(loc_img, left_x, map_y, width=col_w, height=map_h)
+        pic_map.line.visible = True
+        pic_map.line.color.rgb = RGBColor(200, 200, 200)
+        pic_map.line.width = Pt(1)
     else:
         map_img = get_static_map_image(lat, lng)
-        if map_img: slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
-    
-    rect_map = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, map_y, col_w, map_h)
-    rect_map.fill.background()
-    rect_map.line.color.rgb = RGBColor(200, 200, 200)
-    rect_map.line.width = Pt(1)
+        if map_img: 
+            pic_map = slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
+            pic_map.line.visible = True
+            pic_map.line.color.rgb = RGBColor(200, 200, 200)
+            pic_map.line.width = Pt(1)
+        else:
+            rect_map = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, map_y, col_w, map_h)
+            rect_map.fill.background()
+            rect_map.line.color.rgb = RGBColor(200, 200, 200)
+            rect_map.line.width = Pt(1)
 
     right_x = Cm(10.8)
     
@@ -875,7 +886,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     prs.save(output)
     return output.getvalue()
 
-# [엑셀 생성]
+# [엑셀 생성 - 복구됨]
 def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
