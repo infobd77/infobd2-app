@@ -621,18 +621,17 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # --- 5. [추가됨] 이미지 삽입 로직 (슬라이드 번호 매핑 및 테두리 적용) ---
-        # 0-based Index: Slide 2 -> idx 1, Slide 3 -> idx 2, etc.
-        # 매핑: {slide_index: (file_key, left, top, width, height)}
-        # Slide 3 (건물 메인) 사이즈: left_x=Cm(1.0), img_y=Cm(3.5), col_w=Cm(9.2), img_h=Cm(11.5)
-        # 그 외 슬라이드는 중앙에 크게 배치: left=Cm(1.5), top=Cm(4.0), w=Cm(18.0), h=Cm(14.0)
+        # --- 5. [수정됨] 이미지 삽입 로직 (슬라이드 번호 매핑 및 좌표 수정) ---
+        # 2번, 4번 사진(꽉 채우기) 요청을 반영하여 좌표와 크기를 대폭 수정했습니다.
+        # Slide 3 (Building Main) - Left half full fill: left=1.0cm, top=3.5cm, width=9.6cm, height=12.5cm
+        # Slide 2, 5, 6, 7 (Maps/Docs) - Full width content area: left=1.0cm, top=4.0cm, width=19.0cm, height=13.5cm
 
         img_insert_map = {
-            1: ('u1', Cm(1.5), Cm(4.0), Cm(18.0), Cm(14.0)), # Slide 2: 위치도
-            2: ('u2', Cm(1.0), Cm(3.5), Cm(9.2), Cm(11.5)),  # Slide 3: 건물 메인 (좌측 상단 고정 사이즈)
-            4: ('u3', Cm(1.5), Cm(4.0), Cm(18.0), Cm(14.0)), # Slide 5: 지적도
-            5: ('u4', Cm(1.5), Cm(4.0), Cm(18.0), Cm(14.0)), # Slide 6: 건축물대장
-            6: ('u5', Cm(1.5), Cm(4.0), Cm(18.0), Cm(14.0))  # Slide 7: 추가사진
+            1: ('u1', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 2: 위치도 (꽉 채움)
+            2: ('u2', Cm(1.0), Cm(3.5), Cm(9.6), Cm(12.5)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움)
+            4: ('u3', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 5: 지적도 (꽉 채움)
+            5: ('u4', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 6: 건축물대장 (꽉 채움)
+            6: ('u5', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5))  # Slide 7: 추가사진 (꽉 채움)
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -1020,6 +1019,7 @@ if addr_input:
                 
                 # [위치 이동 및 UI 변경] 5개의 파일 업로더 생성
                 with st.expander("📸 PPT 삽입용 사진 업로드 (5종)", expanded=True):
+                    st.info("💡 파일을 박스 안으로 드래그 앤 드롭 하세요.")
                     col_u1, col_u2, col_u3 = st.columns(3)
                     with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
                     with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
