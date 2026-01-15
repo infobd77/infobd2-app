@@ -441,6 +441,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         deep_red = RGBColor(204, 0, 0)   # 진한 빨간색
         black = RGBColor(0, 0, 0)
         gray_border = RGBColor(128, 128, 128) # 회색 테두리용
+        dark_gray_border = RGBColor(80, 80, 80) # 진한 회색 테두리용 (슬라이드 3번용)
 
         # --- 1. 데이터 전처리 (단위별 계산값 미리 준비) ---
         bld_name = info.get('bldNm')
@@ -621,17 +622,17 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # --- 5. [수정됨] 이미지 삽입 로직 (슬라이드 번호 매핑 및 좌표 수정) ---
-        # 2번, 4번 사진(꽉 채우기) 요청을 반영하여 좌표와 크기를 대폭 수정했습니다.
-        # Slide 3 (Building Main) - Left half full fill: left=1.0cm, top=3.5cm, width=9.6cm, height=12.5cm
-        # Slide 2, 5, 6, 7 (Maps/Docs) - Full width content area: left=1.0cm, top=4.0cm, width=19.0cm, height=13.5cm
+        # --- 5. [수정됨] 이미지 삽입 로직 (좌표 전면 수정) ---
+        # 1. 박스 윤곽선을 완전히 덮을 수 있도록 크기를 키움 (Width/Height 확대)
+        # 2. 위치를 살짝 위/왼쪽으로 당김 (Left/Top 감소)
+        # 3. Slide 3의 경우 우측 표 높이에 맞춰 높이를 설정
 
         img_insert_map = {
-            1: ('u1', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 2: 위치도 (꽉 채움)
-            2: ('u2', Cm(1.0), Cm(3.5), Cm(9.6), Cm(12.5)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움)
-            4: ('u3', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 5: 지적도 (꽉 채움)
-            5: ('u4', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5)), # Slide 6: 건축물대장 (꽉 채움)
-            6: ('u5', Cm(1.0), Cm(4.0), Cm(19.0), Cm(13.5))  # Slide 7: 추가사진 (꽉 채움)
+            1: ('u1', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 2: 위치도 (꽉 채움)
+            2: ('u2', Cm(1.0), Cm(3.5), Cm(9.5), Cm(11.5)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움, 높이 11.5로 표와 동일)
+            4: ('u3', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 5: 지적도 (꽉 채움)
+            5: ('u4', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 6: 건축물대장 (꽉 채움)
+            6: ('u5', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5))  # Slide 7: 추가사진 (꽉 채움)
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -646,8 +647,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 # [스타일 적용] 회색 테두리 (전체 꽉 채우기)
                 line = pic.line
                 line.visible = True  # 선이 보이도록 강제 설정
-                line.color.rgb = gray_border
                 line.width = Pt(1.5) # 테두리 두께
+                
+                # Slide 3번은 조금 더 진한 테두리
+                if s_idx == 2:
+                    line.color.rgb = dark_gray_border
+                else:
+                    line.color.rgb = gray_border
 
         output = BytesIO()
         prs.save(output)
@@ -1017,19 +1023,20 @@ if addr_input:
             else:
                 st.success("✅ 분석 완료!")
                 
-                # [위치 이동 및 UI 변경] 5개의 파일 업로더 생성
-                with st.expander("📸 PPT 삽입용 사진 업로드 (5종)", expanded=True):
-                    st.info("💡 파일을 박스 안으로 드래그 앤 드롭 하세요.")
-                    col_u1, col_u2, col_u3 = st.columns(3)
-                    with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
-                    with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
-                    with col_u3: u3 = st.file_uploader("Slide 5: 지적도", type=['png', 'jpg', 'jpeg'], key="u3")
-                    
-                    col_u4, col_u5 = st.columns(2)
-                    with col_u4: u4 = st.file_uploader("Slide 6: 건축물대장", type=['png', 'jpg', 'jpeg'], key="u4")
-                    with col_u5: u5 = st.file_uploader("Slide 7: 추가사진", type=['png', 'jpg', 'jpeg'], key="u5")
-                    
-                    images_map = {'u1': u1, 'u2': u2, 'u3': u3, 'u4': u4, 'u5': u5}
+                # [위치 이동 및 UI 변경] 5개의 파일 업로더 생성 - 밖으로 꺼냄
+                st.write("##### 📸 PPT 삽입용 사진 업로드 (박스 안으로 드래그 하세요)")
+                
+                # 3개의 컬럼으로 분할
+                col_u1, col_u2, col_u3 = st.columns(3)
+                with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
+                with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
+                with col_u3: u3 = st.file_uploader("Slide 5: 지적도", type=['png', 'jpg', 'jpeg'], key="u3")
+                
+                col_u4, col_u5 = st.columns(2)
+                with col_u4: u4 = st.file_uploader("Slide 6: 건축물대장", type=['png', 'jpg', 'jpeg'], key="u4")
+                with col_u5: u5 = st.file_uploader("Slide 7: 추가사진", type=['png', 'jpg', 'jpeg'], key="u5")
+                
+                images_map = {'u1': u1, 'u2': u2, 'u3': u3, 'u4': u4, 'u5': u5}
 
                 st.markdown("---")
 
