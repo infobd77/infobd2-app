@@ -446,7 +446,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             
         lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
         total_lp_val = land_price * info['platArea'] if land_price and info['platArea'] else 0
-        total_lp_str = f"{total_lp_val/100000000:,.1f}억" if total_lp_val > 0 else "-"
+        total_lp_str = f"{total_lp_val/100000000:,.1f} 억" if total_lp_val > 0 else "-"
         ai_points_str = "\n".join(selling_points[:4]) if selling_points else "분석된 특징이 없습니다."
 
         plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
@@ -491,12 +491,12 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{주차대수}}": info.get('parking', '-'),
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
-            "{{보증금}}": f"{finance['deposit']:,}만원" if finance['deposit'] else "-",
-            "{{월임대료}}": f"{finance['rent']:,}만원" if finance['rent'] else "-",
-            "{{관리비}}": f"{finance['maintenance']:,}만원" if finance['maintenance'] else "-",
+            "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
+            "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
+            "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
             "{{수익률}}": f"{finance['yield']:.1f}%" if finance['yield'] else "-",
-            "{{융자금}}": f"{finance['loan']:,}억원" if finance['loan'] else "-",
-            "{{매매금액}}": f"{finance['price']:,}억원" if finance['price'] else "-",
+            "{{융자금}}": f"{finance['loan']:,} 억원" if finance['loan'] else "-",
+            "{{매매금액}}": f"{finance['price']:,} 억원" if finance['price'] else "-",
             "{{대지평단가}}": finance.get('land_pyeong_price', '-'),
             "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
             "{{위치도}}": "", 
@@ -595,11 +595,11 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
 
         # [이미지 삽입 - 꽉 채우기 좌표]
         img_insert_map = {
-            1: ('u1', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), 
-            2: ('u2', Cm(0.5), Cm(3.5), Cm(10.2), Cm(14.0)), 
-            4: ('u3', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), 
-            5: ('u4', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), 
-            6: ('u5', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0))  
+            1: ('u1', Cm(0.5), Cm(3.5), Cm(24.59), Cm(15.74)), 
+            2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)), 
+            4: ('u3', Cm(0.5), Cm(3.5), Cm(20.4), Cm(15.74)), 
+            5: ('u4', Cm(0.5), Cm(3.5), Cm(22.97), Cm(15.74)), 
+            6: ('u5', Cm(0.5), Cm(3.5), Cm(22.97), Cm(15.74))  
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -678,8 +678,14 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     lbl_map.text_frame.paragraphs[0].font.bold = True
     lbl_map.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
 
-    map_img = get_static_map_image(lat, lng)
-    if map_img: slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
+    # [수정] 1페이지짜리도 u1(위치도) 사진 우선 사용
+    loc_img = images_dict.get('u1')
+    if loc_img:
+        loc_img.seek(0)
+        slide.shapes.add_picture(loc_img, left_x, map_y, width=col_w, height=map_h)
+    else:
+        map_img = get_static_map_image(lat, lng)
+        if map_img: slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
     
     rect_map = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, map_y, col_w, map_h)
     rect_map.fill.background()
@@ -1260,7 +1266,6 @@ if addr_input:
                 
                 with c_xls:
                     st.write("##### 📥 엑셀 저장")
-                    # create_excel 함수가 여기서 정상적으로 호출됩니다.
                     xlsx_file = create_excel(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, file_for_excel)
 
                     st.download_button(label="엑셀 다운로드", data=xlsx_file, file_name=f"부동산분석_{addr_input}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
