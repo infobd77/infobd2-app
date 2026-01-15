@@ -8,11 +8,13 @@ from pptx.util import Cm, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
+from pptx.enum.dml import MSO_LINE
 import xlsxwriter
 from urllib.parse import quote_plus
 import time
 import urllib3
 import datetime
+# [라이브러리]
 import folium
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -76,7 +78,6 @@ st.markdown("""
             transform: translateY(-2px);
         }
         
-        /* [수정 5번] 평단가 박스 크기 축소 (padding 15px -> 8px, font-size 조정) */
         .unit-price-box {
             background-color: #f5f5f5;
             border: 1px solid #e0e0e0;
@@ -222,7 +223,7 @@ def format_area_ppt(val_str):
         return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
-# --- [수정 4번] AI 인사이트 생성 (키워드 기반 전문 분석 강화) ---
+# --- [AI 인사이트 생성] ---
 def generate_insight_summary(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
@@ -231,7 +232,7 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
         clean_comment = user_comment.replace("\n", " ").strip()
         points.append(clean_comment)
 
-    # 2. 가격 경쟁력 분석 (실거래가 비교)
+    # 2. 가격 경쟁력 분석
     if comp_df is not None and not comp_df.empty:
         try:
             sold_df = comp_df[comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
@@ -252,9 +253,8 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
                 points.append(f"주변 실거래 데이터 부족하나, {target_dong} 내 희소성 있는 매물")
         except: pass
 
-    # 3. 키워드 기반 전문 분석 (선택된 키워드에 따라 문구 변경)
+    # 3. 키워드 기반 전문 분석
     if env_features:
-        # 주요 키워드에 대한 전문 멘트 매핑
         keyword_map = {
             "역세권": "도보권 내 지하철역이 위치하여 풍부한 유동인구 확보 가능",
             "대로변": "가시성이 탁월한 대로변에 위치하여 사옥 및 브랜드 홍보 효과 극대화",
@@ -269,7 +269,6 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
             "밸류업유망": "리모델링 또는 신축 시 가치 상승 여력이 매우 높은 밸류업 유망주"
         }
         
-        # 선택된 키워드 중 매핑된 멘트가 있으면 추가 (최대 2개)
         count = 0
         for feat in env_features:
             if feat in keyword_map:
@@ -277,12 +276,10 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
                 count += 1
                 if count >= 2: break 
         
-        # 매핑된 게 없으면 기본 나열
         if count == 0:
             env_short = "/".join(env_features[:2])
             points.append(f"{env_short} 등 다각적인 입지 장점을 보유한 우량 매물")
     else:
-        # 키워드 선택 안했을 때 기본
         points.append("역세권 및 대로변 접근성이 우수하여 투자가치가 높은 매물")
 
     # 4. 수익률 분석
@@ -546,7 +543,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # [수정 1번] 금액 정보: 보증금, 임대료, 관리비, 융자금 -> 검정색 Bold 처리
+                # 금액 정보: 검정색 Bold 처리
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -560,33 +557,36 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     for r in p.runs:
                         r.font.size = Pt(12)
                         r.font.bold = True
-                        r.font.color.rgb = black # 검정색
+                        r.font.color.rgb = black
                     return 
 
-                # [수정 2번, 3번] 대지면적, 연면적 -> 숫자 및 평수 Bold 처리
+                # 대지면적, 연면적 -> Bold 처리
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
                         for r in p.runs: 
                             r.font.size = Pt(10)
-                            r.font.bold = True # Bold
+                            r.font.bold = True 
                             r.font.color.rgb = deep_blue
                     else:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_m2'])
-                        for r in p.runs: r.font.size = Pt(10) # m2는 기본
+                        for r in p.runs: 
+                            r.font.size = Pt(10)
+                            r.font.bold = True
                             
                 elif "{{연면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
                         for r in p.runs: 
                             r.font.size = Pt(10)
-                            r.font.bold = True # Bold
+                            r.font.bold = True 
                             r.font.color.rgb = deep_blue
                     else:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_m2'])
-                        for r in p.runs: r.font.size = Pt(10) # m2는 기본
+                        for r in p.runs: 
+                            r.font.size = Pt(10)
+                            r.font.bold = True
 
-                # 나머지 항목 처리
                 elif "{{건축면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{건축면적}}", ctx['arch_py'])
@@ -638,7 +638,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # [이미지 삽입 - 꽉 채우기 좌표]
+        # [이미지 삽입]
         img_insert_map = {
             1: ('u1', Cm(2.55), Cm(3.5), Cm(24.59), Cm(15.74)),  # Slide 2
             2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)),   # Slide 3
@@ -705,15 +705,15 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     main_img = images_dict.get('u2')
     if main_img:
         main_img.seek(0)
-        slide.shapes.add_picture(main_img, left_x, img_y, width=col_w, height=img_h)
+        pic = slide.shapes.add_picture(main_img, left_x, img_y, width=col_w, height=img_h)
+        pic.line.visible = True
+        pic.line.color.rgb = RGBColor(200, 200, 200)
+        pic.line.width = Pt(1)
     else:
-        box = slide.shapes.add_textbox(left_x, img_y, col_w, img_h)
-        box.text_frame.text = "" 
-    
-    rect_img = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, img_y, col_w, img_h)
-    rect_img.fill.background()
-    rect_img.line.color.rgb = RGBColor(200, 200, 200)
-    rect_img.line.width = Pt(1)
+        rect_img = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, img_y, col_w, img_h)
+        rect_img.fill.background()
+        rect_img.line.color.rgb = RGBColor(200, 200, 200)
+        rect_img.line.width = Pt(1)
 
     map_y = Cm(15.8)
     map_h = Cm(12.0)
@@ -724,19 +724,26 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     lbl_map.text_frame.paragraphs[0].font.bold = True
     lbl_map.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
 
-    # 1페이지짜리도 u1(위치도) 사진 우선 사용
+    # [수정] 1페이지짜리도 u1(위치도) 사진 우선 사용
     loc_img = images_dict.get('u1')
     if loc_img:
         loc_img.seek(0)
-        slide.shapes.add_picture(loc_img, left_x, map_y, width=col_w, height=map_h)
+        pic_map = slide.shapes.add_picture(loc_img, left_x, map_y, width=col_w, height=map_h)
+        pic_map.line.visible = True
+        pic_map.line.color.rgb = RGBColor(200, 200, 200)
+        pic_map.line.width = Pt(1)
     else:
         map_img = get_static_map_image(lat, lng)
-        if map_img: slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
-    
-    rect_map = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, map_y, col_w, map_h)
-    rect_map.fill.background()
-    rect_map.line.color.rgb = RGBColor(200, 200, 200)
-    rect_map.line.width = Pt(1)
+        if map_img: 
+            pic_map = slide.shapes.add_picture(map_img, left_x, map_y, width=col_w, height=map_h)
+            pic_map.line.visible = True
+            pic_map.line.color.rgb = RGBColor(200, 200, 200)
+            pic_map.line.width = Pt(1)
+        else:
+            rect_map = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_x, map_y, col_w, map_h)
+            rect_map.fill.background()
+            rect_map.line.color.rgb = RGBColor(200, 200, 200)
+            rect_map.line.width = Pt(1)
 
     right_x = Cm(10.8)
     
@@ -1300,8 +1307,11 @@ if addr_input:
                 
                 naver_map_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
                 st.markdown(f"**[📍 네이버 지도에서 위치 확인하기 (Click)]({naver_map_url})**")
-
-                # (카카오 지도 및 지적도 시각화 삭제됨)
+                
+                # [추가됨] 토지이음(토지이용계획확인원) 바로가기 링크
+                if location.get('pnu'):
+                    eum_url = f"https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?mode=search&searchType=address&pnu={location['pnu']}"
+                    st.markdown(f"**[📑 토지이음(토지이용계획/건축물정보) 바로가기 (Click)]({eum_url})**")
                 
                 finance_data = {
                     "price": price_val, "deposit": deposit_val, "rent": rent_val, 
