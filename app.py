@@ -14,7 +14,7 @@ from urllib.parse import quote_plus
 import time
 import urllib3
 import datetime
-import random # AI 랜덤 문구 생성을 위해 추가
+import random 
 import folium
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -170,7 +170,7 @@ KAKAO_API_KEY = "2a3330b822a5933035eacec86061ee41"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
 if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = []
-if 'ai_candidates' not in st.session_state: st.session_state['ai_candidates'] = [] # AI 후보군 저장
+if 'ai_candidates' not in st.session_state: st.session_state['ai_candidates'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
@@ -220,34 +220,34 @@ def format_date_dot(date_str):
 
 def format_area_html(val_str):
     try:
-        val = float(val_str); if val == 0: return "-"
+        val = float(val_str)
+        if val == 0: return "-"
         pyung = val * 0.3025
         return f"{val:,.2f}㎡<br><span style='color: #E53935;'>({pyung:,.1f}평)</span>"
     except: return "-"
 
 def format_area_ppt(val_str):
     try:
-        val = float(val_str); if val == 0: return "-"
+        val = float(val_str)
+        if val == 0: return "-"
         pyung = val * 0.3025
         return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
-# --- [AI 다이내믹 인사이트 생성 (랜덤 문구 조합)] ---
+# --- [AI 인사이트 생성] ---
 def generate_dynamic_insights(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     candidates = []
-    
-    # 1. 사용자 코멘트 (고정)
     if user_comment: candidates.append(user_comment.replace("\n", " ").strip())
 
-    # 2. 가격 경쟁력 (Dynamic Phrasing)
     if comp_df is not None and not comp_df.empty:
         try:
             sold_df = comp_df[comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
             if not sold_df.empty:
-                avg_price = sold_df['평당가'].mean(); my_price = finance['land_pyeong_price_val']
-                diff = my_price - avg_price; diff_pct = abs(diff / avg_price) * 100
+                avg_price = sold_df['평당가'].mean() 
+                my_price = finance['land_pyeong_price_val'] 
+                diff = my_price - avg_price
+                diff_pct = abs(diff / avg_price) * 100
                 loc_prefix = f"{target_dong} " if target_dong else "인근 "
-                
                 if diff < 0:
                     phrases = [
                         f"✅ {loc_prefix}실거래 평균(평당 {avg_price:,.0f}만) 대비 {diff_pct:.1f}% 저렴한 확실한 가격 메리트",
@@ -255,15 +255,11 @@ def generate_dynamic_insights(info, finance, zoning, env_features, user_comment,
                         f"💰 {loc_prefix}최근 거래 사례와 비교 시 가격 경쟁력이 매우 우수한 급매물"
                     ]
                     candidates.append(random.choice(phrases))
-                elif diff == 0:
-                    candidates.append(f"{loc_prefix}실거래 시세(평당 {avg_price:,.0f}만) 수준의 합리적인 적정 매매가")
-                else:
-                    candidates.append(f"{loc_prefix}평균 시세 상회하나, 신축급 컨디션 및 {zoning} 용적률 이점 반영")
+                elif diff == 0: candidates.append(f"{loc_prefix}실거래 시세(평당 {avg_price:,.0f}만) 수준의 합리적인 적정 매매가")
+                else: candidates.append(f"{loc_prefix}평균 시세 상회하나, 신축급 컨디션 및 {zoning} 용적률 이점 반영")
         except: pass
 
-    # 3. 입지 및 키워드 분석 (Dynamic Phrasing)
     if env_features:
-        # 각 키워드별로 2~3개의 변형 문구 준비
         feature_phrases = {
             "역세권": ["도보권 내 지하철역이 위치하여 풍부한 유동인구 확보 가능", "초역세권 입지로 대중교통 접근성이 탁월하여 임차 수요 풍부", "역세권 불패 입지로 향후 안정적인 자산 가치 상승 기대"],
             "대로변": ["가시성이 탁월한 대로변에 위치하여 사옥 및 브랜드 홍보 효과 극대화", "차량 접근성이 우수한 대로변 입지로 랜드마크 건물 활용 가능", "넓은 도로를 접하고 있어 탁 트인 개방감과 우수한 접근성 자랑"],
@@ -275,38 +271,24 @@ def generate_dynamic_insights(info, finance, zoning, env_features, user_comment,
             "사옥추천": ["내외관 관리가 우수하고 주차 여건이 좋아 기업 사옥으로 최적", "조용한 업무 환경과 편리한 교통망을 갖춘 사옥 및 오피스 추천", "임대 수익보다는 실사용 목적의 기업 사옥으로 강력 추천하는 입지"],
             "밸류업유망": ["노후화된 건물이지만 리모델링 시 가치 상승 여력이 매우 높은 원석", "신축 시 용적률 이득을 볼 수 있어 디벨로퍼에게 추천하는 부지", "현재 저평가되어 있으나 밸류업을 통해 고수익 창출 가능한 유망주"]
         }
-        
-        # 선택된 키워드 중 랜덤하게 2개 뽑아서 문구 생성
         selected_feats = random.sample(env_features, k=min(len(env_features), 2))
         for feat in selected_feats:
-            if feat in feature_phrases:
-                candidates.append(random.choice(feature_phrases[feat]))
-    else:
-        candidates.append("역세권 및 대로변 접근성이 우수하여 투자가치가 높은 매물")
+            if feat in feature_phrases: candidates.append(random.choice(feature_phrases[feat]))
+    else: candidates.append("역세권 및 대로변 접근성이 우수하여 투자가치가 높은 매물")
 
-    # 4. 수익률 및 재무 분석 (Dynamic)
     yield_val = finance['yield']
-    if yield_val >= 4.0:
-        p_list = [f"연 {yield_val:.1f}%의 고수익을 자랑하며, 고금리 시대에도 경쟁력 있는 매물", f"현금 흐름이 우수한 연 {yield_val:.1f}% 수익형 부동산으로 즉시 현금화 가능"]
-        candidates.append(random.choice(p_list))
-    elif yield_val >= 3.0:
-        candidates.append(f"연 {yield_val:.1f}%의 안정적인 임대 수익과 향후 지가 상승 동반 기대")
-    else:
-        candidates.append("안정적인 임대 수익보다는 향후 개발 및 시세 차익에 중점을 둔 투자처")
+    if yield_val >= 4.0: candidates.append(random.choice([f"연 {yield_val:.1f}%의 고수익을 자랑하며, 고금리 시대에도 경쟁력 있는 매물", f"현금 흐름이 우수한 연 {yield_val:.1f}% 수익형 부동산으로 즉시 현금화 가능"]))
+    elif yield_val >= 3.0: candidates.append(f"연 {yield_val:.1f}%의 안정적인 임대 수익과 향후 지가 상승 동반 기대")
+    else: candidates.append("안정적인 임대 수익보다는 향후 개발 및 시세 차익에 중점을 둔 투자처")
 
-    # 5. 건물 연식 및 미래가치 (Dynamic)
     year = int(info['useAprDay'][:4]) if info.get('useAprDay') else 0
     age = datetime.datetime.now().year - year
-    if 0 < age < 5:
-        candidates.append("신축급 최상의 컨디션 유지 중으로 유지보수 비용 절감 효과")
-    elif age > 25:
-        candidates.append("대지면적 활용도가 높아 신축 부지로 활용 시 자산 가치 급상승 예상")
-    else:
-        candidates.append("지속적인 관리로 양호한 건물 상태를 유지하고 있어 운영 용이")
+    if 0 < age < 5: candidates.append("신축급 최상의 컨디션 유지 중으로 유지보수 비용 절감 효과")
+    elif age > 25: candidates.append("대지면적 활용도가 높아 신축 부지로 활용 시 자산 가치 급상승 예상")
+    else: candidates.append("지속적인 관리로 양호한 건물 상태를 유지하고 있어 운영 용이")
         
     return candidates
 
-# --- [데이터 조회 함수] ---
 @st.cache_data(show_spinner=False)
 def get_pnu_and_coords(address):
     url = "http://api.vworld.kr/req/search"
@@ -421,7 +403,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs = Presentation(template_binary)
         deep_blue = RGBColor(0, 51, 153); deep_red = RGBColor(204, 0, 0); black = RGBColor(0, 0, 0); gray_border = RGBColor(128, 128, 128); dark_gray_border = RGBColor(80, 80, 80)
         
-        bld_name = info.get('bldNm'); 
+        bld_name = info.get('bldNm')
         if not bld_name or bld_name == '-': bld_name = f"{full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ''} 빌딩"
         
         lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
@@ -474,10 +456,10 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if k in p_text:
                         val_str = str(mapper[k])
                         if " " in val_str:
-                            num, unit = val_str.split(' ', 1)
-                            p.text = ""
-                            run_n = p.add_run(); run_n.text = num + " "; run_n.font.size = Pt(12); run_n.font.bold = True; run_n.font.color.rgb = black
-                            run_u = p.add_run(); run_u.text = unit; run_u.font.size = Pt(10); run_u.font.bold = True; run_u.font.color.rgb = black
+                            num_part, unit_part = val_str.split(' ', 1)
+                            p.text = "" 
+                            run_num = p.add_run(); run_num.text = num_part + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
+                            run_unit = p.add_run(); run_unit.text = unit_part; run_unit.font.size = Pt(10); run_unit.font.bold = True; run_unit.font.color.rgb = black
                         else:
                             p.text = val_str
                             for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = black
@@ -533,12 +515,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         if 6 < len(prs.slides):
             slide7 = prs.slides[6]
             u5_keys = ['u5_1', 'u5_2', 'u5_3', 'u5_4']
-            positions = [
-                (Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), 
-                (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))
-            ]
+            positions = [(Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))]
             w_s7, h_s7 = Cm(13.6), Cm(7.75)
-            
             for idx, u_key in enumerate(u5_keys):
                 if u_key in images_dict and images_dict[u_key]:
                     f = images_dict[u_key]; f.seek(0)
@@ -549,6 +527,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
 
+    # --- [1장짜리 요약본] ---
     prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
@@ -869,30 +848,18 @@ if addr_input:
                         except Exception as e: st.error(f"엑셀 처리 오류: {e}")
 
                 user_comment = st.text_area("📝 추가 특징 입력 (예: 1층 스타벅스 입점, 주인세대 명도 가능 등)", height=80)
-                
-                # [수정] AI 인사이트 생성 버튼 (선택 기능 제공)
                 if st.button("🤖 전문가 인사이트 요약 생성 (Click)"):
                     with st.spinner("빅데이터 분석 및 리포트 작성 중..."):
                         finance_data_for_ai = {"yield": yield_rate, "price": price_val, "land_pyeong_price_val": land_price_per_py}
-                        # 후보군 생성하여 저장
                         candidates = generate_dynamic_insights(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
                         st.session_state['ai_candidates'] = candidates
-                        # 기본적으로 전체 선택 상태로 초기화
                         st.session_state['selling_summary'] = candidates 
 
-                # 후보군이 있으면 멀티 셀렉트 표시
                 if st.session_state['ai_candidates']:
                     st.write("##### 💡 리포트에 포함할 문구를 선택하세요:")
-                    selected_insights = st.multiselect(
-                        label="인사이트 선택",
-                        options=st.session_state['ai_candidates'],
-                        default=st.session_state['ai_candidates'],
-                        label_visibility="collapsed"
-                    )
-                    # 선택된 내용만 최종 반영
+                    selected_insights = st.multiselect(label="인사이트 선택", options=st.session_state['ai_candidates'], default=st.session_state['ai_candidates'], label_visibility="collapsed")
                     st.session_state['selling_summary'] = selected_insights
 
-                    # 선택된 결과 미리보기 박스
                     if st.session_state['selling_summary']:
                         st.markdown(f"""<div class="ai-summary-box"><div class="ai-title">🌟 전문가 투자 포인트 (Key Insights)</div>""", unsafe_allow_html=True)
                         for point in st.session_state['selling_summary']: st.markdown(f"<div class='insight-item'>{point}</div>", unsafe_allow_html=True)
@@ -917,7 +884,6 @@ if addr_input:
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     if ppt_template: st.success("✅ 템플릿 적용됨")
                     pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, images_map, template_binary=ppt_template)
-                    # 파일명 포맷 변경
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
