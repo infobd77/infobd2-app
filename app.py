@@ -428,7 +428,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 - 꽉 채우기 모드 및 좌표 수정]
+# [PPT 생성 함수 - 꽉 채우기 모드 및 좌표 수정, 폰트 스타일 적용]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
     if template_binary:
         prs = Presentation(template_binary)
@@ -492,6 +492,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{주차대수}}": info.get('parking', '-'),
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
+            # 금액 정보 - 나중에 분리하여 스타일링
             "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
             "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
             "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
@@ -523,6 +524,44 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
                 p_text = p.text
+                
+                # [특수 처리] 금액 정보 단위 스타일링 (숫자: 12pt, 단위: 10pt, 공통: Bold + Deep Blue)
+                financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
+                found_fin_key = None
+                for k in financial_keys:
+                    if k in p_text:
+                        found_fin_key = k
+                        break
+                
+                if found_fin_key:
+                    val_str = str(mapper[found_fin_key]) # 예: "10,000 만원"
+                    if " " in val_str:
+                        num_part, unit_part = val_str.split(' ', 1)
+                        p.text = "" # 기존 텍스트 클리어
+                        
+                        # 숫자 부분 (12pt)
+                        run_num = p.add_run()
+                        run_num.text = num_part + " "
+                        run_num.font.size = Pt(12)
+                        run_num.font.bold = True
+                        run_num.font.color.rgb = deep_blue
+                        
+                        # 단위 부분 (10pt)
+                        run_unit = p.add_run()
+                        run_unit.text = unit_part
+                        run_unit.font.size = Pt(10)
+                        run_unit.font.bold = True
+                        run_unit.font.color.rgb = deep_blue
+                    else:
+                        # 공백 없으면(데이터 없음 등) 그냥 적용
+                        p.text = val_str
+                        for r in p.runs:
+                            r.font.size = Pt(12)
+                            r.font.bold = True
+                            r.font.color.rgb = deep_blue
+                    return # 처리 완료
+
+                # 일반 처리
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
@@ -575,8 +614,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                             if found_key == "{{빌딩이름}}":
                                 r.font.size = Pt(25)
                                 r.font.bold = True
-                            elif found_key in ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]:
-                                r.font.size = Pt(12)
                             elif found_key == "{{수익률}}":
                                 r.font.size = Pt(12)
                                 r.font.color.rgb = deep_red
@@ -594,19 +631,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # [이미지 삽입 - 꽉 채우기 좌표] - 요청사항 cm 적용
-        # S2: 24.59 x 15.74
-        # S3: 13.91 x 10.97
-        # S5: 20.4 x 15.74
-        # S6: 22.97 x 15.74
+        # [이미지 삽입 - 사용자 지정 크기 및 중앙 정렬 좌표]
+        # Slide Width: 29.7cm (A4 Landscape)
+        # S2: 24.59 x 15.74 -> Left: (29.7-24.59)/2 = 2.555
+        # S3: 13.91 x 10.97 -> Left: 1.0 (Fixed Left)
+        # S5: 20.4 x 15.74 -> Left: (29.7-20.4)/2 = 4.65
+        # S6: 22.97 x 15.74 -> Left: (29.7-22.97)/2 = 3.365
         # S7: Same as S6
-        
-        # Center Calculation Logic (Based on 29.7cm width PPT)
-        # S2 Left: (29.7 - 24.59)/2 = 2.555
-        # S5 Left: (29.7 - 20.4)/2 = 4.65
-        # S6 Left: (29.7 - 22.97)/2 = 3.365
-        
-        # S3 is left aligned. 
         
         img_insert_map = {
             1: ('u1', Cm(2.55), Cm(3.5), Cm(24.59), Cm(15.74)),  # Slide 2
@@ -844,7 +875,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     prs.save(output)
     return output.getvalue()
 
-# [엑셀 생성 - 복구됨]
+# [엑셀 생성]
 def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -945,15 +976,18 @@ st.markdown("---")
 
 # --- [통합된 부분] 지도에서 클릭하여 찾기 ---
 with st.expander("🗺 지도에서 직접 클릭하여 찾기 (Click)", expanded=False):
+    # 서울 강남구청 중심
     m = folium.Map(location=[37.5172, 127.0473], zoom_start=14)
     output = st_folium(m, width=700, height=400)
 
+    # [수정된 로직] 이전 클릭값과 비교하여 *새로운 클릭*일 때만 주소 변경
     if output and output.get("last_clicked"):
         lat = output["last_clicked"]["lat"]
         lng = output["last_clicked"]["lng"]
         
+        # 세션에 저장된 '마지막 클릭 좌표'와 비교 (소수점 정밀도 고려하여 약간의 오차 허용 가능하지만 단순비교로도 충분)
         if "last_click_lat" not in st.session_state or st.session_state["last_click_lat"] != lat:
-            st.session_state["last_click_lat"] = lat
+            st.session_state["last_click_lat"] = lat # 최신 클릭 저장
             
             found_addr = get_address_from_coords(lat, lng)
             if found_addr:
@@ -989,6 +1023,7 @@ if addr_input:
                 # [위치 이동 및 UI 변경] 5개의 파일 업로더 생성 - 밖으로 꺼냄
                 st.write("##### 📸 PPT 삽입용 사진 업로드 (박스 안으로 드래그 하세요)")
                 
+                # 3개의 컬럼으로 분할
                 col_u1, col_u2, col_u3 = st.columns(3)
                 with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
                 with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
@@ -1066,12 +1101,13 @@ if addr_input:
                 st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("---")
 
-                # [금액 정보]
+                # [금액 정보] - 기존 코드 그대로 유지 (빈칸 처리 로직)
                 st.subheader("💰 금액 정보")
                 st.markdown("""<div style="background-color: #f8f9fa; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">""", unsafe_allow_html=True)
                 st.write("") 
 
                 row1_1, row1_2, row1_3 = st.columns(3)
+                # 초기값을 0으로 설정하여 공란으로 표시됨
                 with row1_1: deposit_val = comma_input("보증금", "만원", "deposit", 0, help_text="")
                 with row1_2: rent_val = comma_input("월임대료", "만원", "rent", 0)
                 with row1_3: maint_val = comma_input("관리비", "만원", "maint", 0)
@@ -1086,19 +1122,27 @@ if addr_input:
                     with c_in_p:
                         if "price" not in st.session_state: st.session_state["price"] = 0
                         current_p = st.session_state["price"]
+                        
+                        # 0일 때 빈 칸 표시 로직 적용
                         fmt_price = f"{current_p:,}" if current_p != 0 else ""
+                        
                         p_input = st.text_input("매매금액", value=fmt_price, key="price_input", label_visibility="hidden")
                         try:
-                            if p_input.strip() == "": price_val = 0
-                            else: price_val = int(p_input.replace(',', '').strip())
+                            # 빈 값 처리
+                            if p_input.strip() == "":
+                                price_val = 0
+                            else:
+                                price_val = int(p_input.replace(',', '').strip())
                             st.session_state["price"] = price_val
-                        except: price_val = 0
+                        except:
+                            price_val = 0
                     with c_unit_p:
                         st.markdown(f"<div style='margin-top: 15px; font-size: 18px; font-weight: 600; color: #555;'>억원</div>", unsafe_allow_html=True)
 
                 try:
                     real_invest_won = (price_val * 10000) - deposit_val
                     real_invest_eok = real_invest_won / 10000
+                    
                     if real_invest_won > 0: yield_rate = ((rent_val * 12) / real_invest_won) * 100
                     else: yield_rate = 0
                 except: 
@@ -1154,6 +1198,7 @@ if addr_input:
 
                 st.write("")
                 
+                # [초기화 기능 추가] key에 주소를 넣어 주소 변경 시 엑셀 파일도 자동 초기화
                 with st.expander("📂 비교 분석용 엑셀 데이터 업로드 (선택사항)", expanded=True):
                     st.info("💡 엑셀 필수 컬럼: 구분, 소재지, 대지면적, 매매금액")
                     comp_file = st.file_uploader("주변 매매사례/매물 엑셀 업로드", type=['xlsx', 'xls'], key=f"excel_{addr_input}")
@@ -1162,6 +1207,7 @@ if addr_input:
                     
                     if comp_file:
                         try:
+                            # 1. 주소에서 '동' 추출 (예: 서울 강남구 논현동 254-4 -> 논현동)
                             addr_parts = location['full_addr'].split(' ')
                             for part in addr_parts:
                                 if part.endswith('동'):
@@ -1173,11 +1219,13 @@ if addr_input:
                             
                             required_cols = ['구분', '소재지', '대지면적', '매매금액']
                             if all(col in raw_df.columns for col in required_cols):
+                                # 2. '동' 포함된 데이터만 필터링
                                 if target_dong:
                                     filtered_df = raw_df[raw_df['소재지'].astype(str).str.contains(target_dong, na=False)].copy()
                                 else:
-                                    filtered_df = raw_df.copy()
+                                    filtered_df = raw_df.copy() # 동을 못 찾으면 전체 사용
 
+                                # 데이터 전처리 (필터링된 데이터 대상)
                                 if not filtered_df.empty:
                                     filtered_df['대지면적_숫자'] = pd.to_numeric(filtered_df['대지면적'], errors='coerce').fillna(0)
                                     filtered_df['매매금액_숫자'] = pd.to_numeric(filtered_df['매매금액'], errors='coerce').fillna(0)
@@ -1188,6 +1236,7 @@ if addr_input:
                                     
                                     if not filtered_comp_df.empty:
                                         st.success(f"✅ '{target_dong}' 관련 데이터 {len(filtered_comp_df)}건을 찾아 분석합니다.")
+                                        
                                         col_res1, col_res2 = st.columns(2)
                                         sold_cases = filtered_comp_df[filtered_comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
                                         
@@ -1246,10 +1295,13 @@ if addr_input:
 
                 st.markdown("---")
 
+                # [지도 및 다운로드]
                 st.subheader("🗺 지도 및 다운로드")
                 
                 naver_map_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
                 st.markdown(f"**[📍 네이버 지도에서 위치 확인하기 (Click)]({naver_map_url})**")
+
+                # (카카오 지도 및 지적도 시각화 삭제됨)
                 
                 finance_data = {
                     "price": price_val, "deposit": deposit_val, "rent": rent_val, 
@@ -1261,15 +1313,18 @@ if addr_input:
                 z_val = st.session_state.get('zoning', '') if isinstance(st.session_state.get('zoning', ''), str) else ""
                 current_summary = st.session_state.get('selling_summary', [])
 
+                # 엑셀은 메인 사진(u2)만 사용
                 file_for_excel = u2 if 'u2' in locals() else None
 
                 st.markdown("---")
                 
+                # [수정됨] 템플릿 업로드 기능 추가
                 c_ppt, c_xls = st.columns([1, 1])
                 
                 with c_ppt:
                     st.write("##### 📥 PPT 저장")
                     
+                    # 템플릿 업로더 추가
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     
                     if ppt_template:
