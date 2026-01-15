@@ -55,6 +55,18 @@ st.markdown("""
             font-size: 18px !important;
             font-weight: 600 !important;
         }
+        
+        /* [추가] 공시지가/용도지역 입력칸 스타일 */
+        div[data-testid="stTextInput"] input[aria-label="공시지가"] {
+            text-align: center !important;
+            font-size: 20px !important;
+            color: #1a237e !important;
+        }
+        div[data-testid="stTextInput"] input[aria-label="용도지역"] {
+            text-align: center !important;
+            font-size: 20px !important;
+            color: #1a237e !important;
+        }
 
         input[aria-label="매매금액"] {
              color: #D32F2F !important; 
@@ -161,9 +173,15 @@ if 'selling_summary' not in st.session_state: st.session_state['selling_summary'
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
+# [추가] 자동 조회된 공시지가/용도지역 저장용
+if 'fetched_lp' not in st.session_state: st.session_state['fetched_lp'] = 0
+if 'fetched_zoning' not in st.session_state: st.session_state['fetched_zoning'] = ""
 
 def reset_analysis():
     st.session_state['selling_summary'] = []
+    # 주소 변경시 초기화
+    st.session_state['fetched_lp'] = 0
+    st.session_state['fetched_zoning'] = ""
 
 # --- [좌표 -> 주소 변환 함수] ---
 def get_address_from_coords(lat, lng):
@@ -306,7 +324,6 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
     else:
         points.append("역세권 및 대로변 접근성이 우수하여 투자가치가 높은 매물")
 
-    # 4. 수익률 분석
     yield_val = finance['yield']
     if yield_val >= 4.0:
         points.append(f"연 {yield_val:.1f}%의 고수익을 자랑하며, 고금리 시대에도 경쟁력 있는 매물")
@@ -315,7 +332,6 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
     else:
         points.append("안정적인 임대 수익보다는 향후 개발 및 시세 차익에 중점을 둔 투자처")
 
-    # 5. 건물 연식 분석
     year = int(info['useAprDay'][:4]) if info.get('useAprDay') else 0
     age = datetime.datetime.now().year - year
     if 0 < age < 5:
@@ -366,7 +382,7 @@ def get_zoning_smart(lat, lng):
                 zonings = [f['properties']['UNAME'] for f in features]
                 return ", ".join(sorted(list(set(zonings))))
     except: pass
-    return "직접입력"
+    return ""
 
 @st.cache_data(show_spinner=False)
 def get_land_price(pnu):
@@ -568,7 +584,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # [수정 1, 2] 금액 정보: 검정색, Bold, 단위 10pt
+                # 금액 정보: 검정색 Bold 처리
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -581,27 +597,14 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if " " in val_str:
                         num_part, unit_part = val_str.split(' ', 1)
                         p.text = "" 
-                        
-                        run_num = p.add_run()
-                        run_num.text = num_part + " "
-                        run_num.font.size = Pt(12)
-                        run_num.font.bold = True
-                        run_num.font.color.rgb = black
-                        
-                        run_unit = p.add_run()
-                        run_unit.text = unit_part
-                        run_unit.font.size = Pt(10)
-                        run_unit.font.bold = True
-                        run_unit.font.color.rgb = black
+                        run_num = p.add_run(); run_num.text = num_part + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
+                        run_unit = p.add_run(); run_unit.text = unit_part; run_unit.font.size = Pt(10); run_unit.font.bold = True; run_unit.font.color.rgb = black
                     else:
                         p.text = val_str
-                        for r in p.runs:
-                            r.font.size = Pt(12)
-                            r.font.bold = True
-                            r.font.color.rgb = black
+                        for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = black
                     return 
 
-                # [수정 2] 매매금액: 파란색, Bold, 단위 10pt
+                # 매매금액: 파란색, Bold
                 if "{{매매금액}}" in p_text:
                     val_str = str(mapper["{{매매금액}}"])
                     if " " in val_str:
@@ -617,10 +620,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
-                        for r in p.runs: 
-                            r.font.size = Pt(12) 
-                            r.font.bold = True 
-                            r.font.color.rgb = deep_blue
+                        for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = deep_blue
                     else:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -628,10 +628,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 elif "{{연면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
-                        for r in p.runs: 
-                            r.font.size = Pt(12) 
-                            r.font.bold = True 
-                            r.font.color.rgb = deep_blue
+                        for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = deep_blue
                     else:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_m2'])
                         for r in p.runs: r.font.size = Pt(10)
@@ -659,29 +656,18 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 else:
                     found_key = None
                     for k in mapper.keys():
-                        if k in p_text:
-                            found_key = k
-                            break
+                        if k in p_text: found_key = k; break
                     if found_key:
                         val = str(mapper[found_key])
                         p.text = p_text.replace(found_key, val)
                         for r in p.runs:
                             r.font.size = Pt(10)
-                            if found_key == "{{빌딩이름}}":
-                                r.font.size = Pt(25)
-                                r.font.bold = True
-                            elif found_key == "{{수익률}}":
-                                r.font.size = Pt(12)
-                                r.font.color.rgb = deep_red
-                                r.font.bold = True
-                            elif found_key == "{{대지평단가}}":
-                                r.font.size = Pt(10)
-                                r.font.color.rgb = deep_blue
-                                r.font.bold = True
+                            if found_key == "{{빌딩이름}}": r.font.size = Pt(25); r.font.bold = True
+                            elif found_key == "{{수익률}}": r.font.size = Pt(12); r.font.color.rgb = deep_red; r.font.bold = True
+                            elif found_key == "{{대지평단가}}": r.font.size = Pt(10); r.font.color.rgb = deep_blue; r.font.bold = True
         
         for slide in prs.slides:
-            for shape in slide.shapes:
-                replace_text_in_shape(shape, data_map, ctx_vals)
+            for shape in slide.shapes: replace_text_in_shape(shape, data_map, ctx_vals)
 
         # [이미지 삽입]
         img_insert_map = {
@@ -701,14 +687,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         if 6 < len(prs.slides):
             slide7 = prs.slides[6]
             u5_keys = ['u5_1', 'u5_2', 'u5_3', 'u5_4']
-            # 전체 영역: L 1.0, T 3.5, W 27.7, H 16.0 (대략) -> 4등분
-            # 각 사진 크기: W 13.6, H 7.75, 간격 0.5
-            positions = [
-                (Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), 
-                (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))
-            ]
+            positions = [(Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))]
             w_s7, h_s7 = Cm(13.6), Cm(7.75)
-            
             for idx, u_key in enumerate(u5_keys):
                 if u_key in images_dict and images_dict[u_key]:
                     f = images_dict[u_key]; f.seek(0)
@@ -723,10 +703,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
-    # ... (기존 1장짜리 로직 유지, 지면상 생략했으나 원본 코드에는 포함됨 - 아래 전체 코드에 포함) ...
-    # (위치도 u1 사용 로직 포함)
-    
-    # 1장짜리 전체 코드 복구
     title_box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Cm(1.0), Cm(1.0), Cm(19.0), Cm(2.0))
     title_box.fill.background(); title_box.line.color.rgb = RGBColor(200, 200, 200); title_box.line.width = Pt(1)
     tf = title_box.text_frame
@@ -761,6 +737,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     table.columns[0].width = Cm(2.3); table.columns[1].width = Cm(2.3); table.columns[2].width = Cm(2.3); table.columns[3].width = Cm(2.3)
     
     lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
+    bcvl_text = f"{info['bcRat']:.2f}%\n{info['vlRat']:.2f}%"
+    
     data = [
         ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", f"{lp_py:,.0f}만/평"],
         ["대지", info['platArea_ppt'], "도로", "M"], ["연면적", info['totArea_ppt'], "준공", info['useAprDay']],
@@ -893,8 +871,11 @@ if addr_input:
                     if location.get('pnu'): st.markdown(f"<a href='https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu={location['pnu']}&mode=search&isNoScr=script' target='_blank' class='link-btn eum-btn'>📑 토지이음 규제정보 확인</a>", unsafe_allow_html=True)
             
             if not st.session_state['zoning']: st.session_state['zoning'] = get_zoning_smart(location['lat'], location['lng'])
+            if not st.session_state['fetched_zoning']: st.session_state['fetched_zoning'] = st.session_state['zoning'] # 최초 1회 저장
+
             info = get_building_info_smart(location['pnu'])
             land_price = get_land_price(location['pnu'])
+            if land_price > 0 and st.session_state['fetched_lp'] == 0: st.session_state['fetched_lp'] = land_price # 최초 1회 저장
             
             if not info or "error" in info: st.error(f"조회 실패: {info.get('error')}")
             else:
@@ -921,21 +902,25 @@ if addr_input:
                 with c1: render_styled_block("소재지", addr_input)
                 with c2: render_styled_block("건물명", info.get('bldNm'))
                 st.write("") 
+                
+                # [수정] 공시지가 입력칸 (자동입력)
                 c_lp1, c_lp2, c_lp3 = st.columns(3)
                 with c_lp1:
-                    if land_price > 0: render_styled_block("개별공시지가(㎡)", f"{land_price:,} 원")
-                    else: 
-                        st.warning("⚠️ 공시지가 조회 불가"); manual_lp = st.number_input("공시지가 직접입력(원)", value=0, step=1000); land_price = manual_lp 
+                    lp_val = st.text_input("공시지가(원/㎡)", value=f"{st.session_state['fetched_lp']:,}")
+                    try: land_price = int(lp_val.replace(',', ''))
+                    except: land_price = 0
                 with c_lp2:
                     if land_price > 0 and info['platArea'] > 0: render_styled_block("공시지가 총액(추정)", f"{land_price * info['platArea'] / 100000000:,.2f}억")
                     else: render_styled_block("공시지가 총액", "-")
                 with c_lp3: st.empty()
                 st.write("")
                 st.markdown("<hr style='margin: 10px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
+                
+                # [수정] 용도지역 입력칸 (자동입력)
                 c2_1, c2_2, c2_3 = st.columns(3)
                 with c2_1:
-                    if st.session_state['zoning'] == "직접입력": st.write("용도지역"); st.session_state['zoning'] = st.text_input("zoning", value="", label_visibility="collapsed")
-                    else: render_styled_block("용도지역", st.session_state['zoning'])
+                    zoning_val = st.text_input("용도지역", value=st.session_state['fetched_zoning'])
+                    st.session_state['zoning'] = zoning_val
                 with c2_2: render_styled_block("대지면적", info['platArea_html'], is_area=True)
                 with c2_3: render_styled_block("연면적", info['totArea_html'], is_area=True)
                 st.write("")
@@ -1067,7 +1052,7 @@ if addr_input:
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     if ppt_template: st.success("✅ 템플릿 적용됨")
                     pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, images_map, template_binary=ppt_template)
-                    # [수정 4] 파일명 포맷 변경
+                    # 파일명 포맷 변경
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
