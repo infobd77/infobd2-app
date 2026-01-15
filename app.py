@@ -122,6 +122,33 @@ st.markdown("""
             color: #1565C0;
             margin-right: 8px;
         }
+        
+        /* [수정 1번] 파일 업로더 텍스트 폰트 작게 */
+        .stFileUploader div[data-testid="stMarkdownContainer"] p {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+        }
+        .stFileUploader section[data-testid="stFileUploaderDropzone"] div {
+            font-size: 13px !important;
+        }
+        
+        /* 링크 버튼 스타일 */
+        .link-btn {
+            display: inline-block;
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            text-align: center;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            color: white !important;
+            transition: 0.3s;
+        }
+        .naver-btn { background-color: #03C75A; }
+        .eum-btn { background-color: #1a237e; }
+        .naver-btn:hover, .eum-btn:hover { opacity: 0.8; }
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -227,10 +254,12 @@ def format_area_ppt(val_str):
 def generate_insight_summary(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
+    # 1. 사용자 코멘트 최우선
     if user_comment:
         clean_comment = user_comment.replace("\n", " ").strip()
         points.append(clean_comment)
 
+    # 2. 가격 경쟁력 분석
     if comp_df is not None and not comp_df.empty:
         try:
             sold_df = comp_df[comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
@@ -251,6 +280,7 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
                 points.append(f"주변 실거래 데이터 부족하나, {target_dong} 내 희소성 있는 매물")
         except: pass
 
+    # 3. 키워드 기반 전문 분석
     if env_features:
         keyword_map = {
             "역세권": "도보권 내 지하철역이 위치하여 풍부한 유동인구 확보 가능",
@@ -538,7 +568,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # [수정] 금액 정보 (숫자 12pt, 단위 10pt, 검정색, Bold)
+                # 금액 정보 처리
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -571,12 +601,11 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                             r.font.color.rgb = black
                     return 
 
-                # [수정] 대지면적, 연면적 (숫자/평수 12pt Bold Blue)
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(12) # 12pt
+                            r.font.size = Pt(12) 
                             r.font.bold = True 
                             r.font.color.rgb = deep_blue
                     else:
@@ -587,7 +616,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if "평" in p_text:
                         p.text = p_text.replace("{{연면적}}", ctx['tot_py'])
                         for r in p.runs: 
-                            r.font.size = Pt(12) # 12pt
+                            r.font.size = Pt(12) 
                             r.font.bold = True 
                             r.font.color.rgb = deep_blue
                     else:
@@ -645,7 +674,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # [이미지 삽입]
+        # [수정 1번] 슬라이드별 박스 크기 및 폰트 조정 (슬라이드 2, 3, 5 -> 슬라이드 6처럼)
+        # 이미지 삽입 좌표 (꽉 채우기)
         img_insert_map = {
             1: ('u1', Cm(2.55), Cm(3.5), Cm(24.59), Cm(15.74)),  # Slide 2
             2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)),   # Slide 3
@@ -1012,6 +1042,9 @@ with st.expander("🗺 지도에서 직접 클릭하여 찾기 (Click)", expande
             else:
                 st.warning("⚠️ 주소를 찾을 수 없는 위치입니다.")
 
+# --- [링크 표시 영역 Container] ---
+link_container = st.container()
+
 # --- [주소 입력창] ---
 addr_input = st.text_input("주소 입력", placeholder="예: 강남구 논현동 254-4", key="addr", on_change=reset_analysis)
 
@@ -1022,6 +1055,17 @@ if addr_input:
         if not location:
             st.error("❌ 주소를 찾을 수 없습니다.")
         else:
+            # [수정 2번] 링크를 주소 입력창 바로 위에 표시 (Container 활용)
+            with link_container:
+                col_l1, col_l2 = st.columns(2)
+                with col_l1:
+                    naver_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
+                    st.markdown(f"<a href='{naver_url}' target='_blank' class='link-btn naver-btn'>📍 네이버지도 위치확인</a>", unsafe_allow_html=True)
+                with col_l2:
+                    if location.get('pnu'):
+                        eum_url = f"https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu={location['pnu']}&mode=search&isNoScr=script"
+                        st.markdown(f"<a href='{eum_url}' target='_blank' class='link-btn eum-btn'>📑 토지이음 규제정보 확인</a>", unsafe_allow_html=True)
+            
             if not st.session_state['zoning']:
                 fetched_zoning = get_zoning_smart(location['lat'], location['lng'])
                 st.session_state['zoning'] = fetched_zoning
@@ -1034,17 +1078,18 @@ if addr_input:
             else:
                 st.success("✅ 분석 완료!")
                 
-                # [위치 이동 및 UI 변경] 5개의 파일 업로더 생성 - 밖으로 꺼냄
+                # [수정 1번] 사진 업로더: 2열 배치로 통일 (넓게)
                 st.write("##### 📸 PPT 삽입용 사진 업로드 (박스 안으로 드래그 하세요)")
                 
-                # 3개의 컬럼으로 분할
-                col_u1, col_u2, col_u3 = st.columns(3)
+                col_u1, col_u2 = st.columns(2)
                 with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
                 with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
-                with col_u3: u3 = st.file_uploader("Slide 5: 지적도", type=['png', 'jpg', 'jpeg'], key="u3")
                 
-                col_u4, col_u5 = st.columns(2)
+                col_u3, col_u4 = st.columns(2)
+                with col_u3: u3 = st.file_uploader("Slide 5: 지적도", type=['png', 'jpg', 'jpeg'], key="u3")
                 with col_u4: u4 = st.file_uploader("Slide 6: 건축물대장", type=['png', 'jpg', 'jpeg'], key="u4")
+                
+                col_u5, col_u_dummy = st.columns(2)
                 with col_u5: u5 = st.file_uploader("Slide 7: 추가사진", type=['png', 'jpg', 'jpeg'], key="u5")
                 
                 images_map = {'u1': u1, 'u2': u2, 'u3': u3, 'u4': u4, 'u5': u5}
@@ -1308,17 +1353,8 @@ if addr_input:
                     st.markdown("</div>", unsafe_allow_html=True)
 
                 st.markdown("---")
-
-                # [지도 및 다운로드]
-                st.subheader("🗺 지도 및 다운로드")
                 
-                naver_map_url = f"https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}"
-                st.markdown(f"**[📍 네이버 지도에서 위치 확인하기 (Click)]({naver_map_url})**")
-                
-                # [추가됨] 토지이음(토지이용계획확인원) 바로가기 링크
-                if location.get('pnu'):
-                    eum_url = f"https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu={location['pnu']}&mode=search&isNoScr=script"
-                    st.markdown(f"**[📑 토지이음(토지이용계획/건축물정보) 바로가기 (Click)]({eum_url})**")
+                # (하단 링크 제거됨 - 상단으로 이동)
                 
                 finance_data = {
                     "price": price_val, "deposit": deposit_val, "rent": rent_val, 
@@ -1330,18 +1366,15 @@ if addr_input:
                 z_val = st.session_state.get('zoning', '') if isinstance(st.session_state.get('zoning', ''), str) else ""
                 current_summary = st.session_state.get('selling_summary', [])
 
-                # 엑셀은 메인 사진(u2)만 사용
                 file_for_excel = u2 if 'u2' in locals() else None
 
                 st.markdown("---")
                 
-                # [수정됨] 템플릿 업로드 기능 추가
                 c_ppt, c_xls = st.columns([1, 1])
                 
                 with c_ppt:
                     st.write("##### 📥 PPT 저장")
                     
-                    # 템플릿 업로더 추가
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     
                     if ppt_template:
