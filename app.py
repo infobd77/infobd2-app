@@ -18,7 +18,6 @@ import random
 import folium
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
-import re # 정규표현식 사용 (이모티콘 제거용)
 
 # SSL 경고 비활성화
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -159,6 +158,12 @@ st.markdown("""
         .naver-btn { background-color: #03C75A; }
         .eum-btn { background-color: #1a237e; }
         .naver-btn:hover, .eum-btn:hover { opacity: 0.8; }
+        
+        /* 체크박스 텍스트 스타일 */
+        .stCheckbox label p {
+            font-size: 16px !important;
+            line-height: 1.6 !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -171,10 +176,11 @@ KAKAO_API_KEY = "2a3330b822a5933035eacec86061ee41"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
 if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = [] # 최종 선택된 것들
-if 'ai_candidates' not in st.session_state: st.session_state['ai_candidates'] = [] # 전체 후보군
+if 'ai_candidates' not in st.session_state: st.session_state['ai_candidates'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
+# 자동 조회된 공시지가/용도지역 저장용
 if 'fetched_lp' not in st.session_state: st.session_state['fetched_lp'] = 0
 if 'fetched_zoning' not in st.session_state: st.session_state['fetched_zoning'] = ""
 
@@ -252,7 +258,7 @@ def generate_dynamic_insights_text_only(info, finance, zoning, env_features, use
                 
                 if diff < 0:
                     phrases = [
-                        f"[가격 메리트] {loc_prefix}실거래 평균(평당 {avg_price:,.0f}만) 대비 {diff_pct:.1f}% 저렴한 확실한 저평가 매물",
+                        f"{loc_prefix}실거래 평균(평당 {avg_price:,.0f}만) 대비 {diff_pct:.1f}% 저렴한 확실한 저평가 매물",
                         f"시세 차익 즉시 실현 가능한 급매물 성격의 합리적 가격 제안",
                         f"주변 시세 대비 {diff_pct:.1f}% 낮은 평단가로 진입 장벽을 낮춘 우량 투자처"
                     ]
@@ -261,74 +267,94 @@ def generate_dynamic_insights_text_only(info, finance, zoning, env_features, use
                     candidates.append(f"{loc_prefix}실거래 시세(평당 {avg_price:,.0f}만) 수준의 합리적인 적정 매매가")
                 else:
                     phrases = [
-                        f"[프리미엄] 평균 시세를 상회하나, 독보적인 입지와 신축급 컨디션 고려 시 충분한 투자가치 보유",
+                        f"평균 시세를 상회하나, 독보적인 입지와 신축급 컨디션 고려 시 충분한 투자가치 보유",
                         f"미래 가치를 선반영한 가격이나, {zoning} 용적률 이점 활용 시 추가 상승 여력 충분",
                         f"지역 내 랜드마크급 입지로, 단순 가격 비교 불가한 희소 가치 보유"
                     ]
                     candidates.append(random.choice(phrases))
         except: pass
 
-    # 3. 입지 및 키워드 분석 (이모티콘 제거)
+    # 3. 입지 및 키워드 분석 (이모티콘 제거 + 추가된 키워드 반영)
     if env_features:
         feature_phrases = {
             "역세권": [
-                "[초역세권] 도보권 내 지하철역 위치, 풍부한 유동인구와 임차 수요를 독점하는 불패 입지",
+                "도보권 내 지하철역 위치, 풍부한 유동인구와 임차 수요를 독점하는 불패 입지",
                 "출퇴근 직장인 수요를 흡수하는 역세권 길목 상권으로 공실 리스크 최소화",
                 "대중교통 접근성이 탁월하여 사옥 및 방문객 위주 업종에 최적화된 입지"
             ],
             "대로변": [
-                "[가시성 최상] 대로변에 접하여 자연스러운 광고 효과와 브랜드 노출 극대화",
+                "가시성이 탁월한 대로변에 접하여 자연스러운 광고 효과와 브랜드 노출 극대화",
                 "차량 접근성이 우수한 대로변 입지로, 기업 사옥 및 플래그십 스토어 추천",
                 "웅장한 외관을 돋보이게 하는 대로변 입지, 지역 내 랜드마크로 성장 가능성 농후"
             ],
             "코너입지": [
-                "[황금 코너] 2면 이상 개방된 코너 입지로 가시성과 접근성을 모두 잡은 A급 입지",
+                "2면 이상 개방된 코너 입지로 가시성과 접근성을 모두 잡은 A급 입지",
                 "보행자 동선이 겹치는 코너 자리로, 유동인구 자연 유입 및 상가 매출 극대화",
                 "대지 활용도가 높은 코너 건물로, 신축 또는 리모델링 시 건축학적 미관 우수"
             ],
             "학군지": [
-                "[명문 학군] 대치/목동 수준의 우수 학군 배후지로, 학원/교습소 등 우량 임차인 대기",
+                "대치/목동 수준의 우수 학군 배후지로, 학원/교습소 등 우량 임차인 대기",
                 "경기 흐름을 타지 않는 탄탄한 교육 수요, 안정적인 임대 수익의 정석",
                 "학생 및 학부모 유동인구가 끊이지 않는 항아리 상권 내 알짜 매물"
             ],
             "먹자상권": [
-                "[핵심 상권] 365일 불이 꺼지지 않는 먹자골목 메인 통로, 높은 바닥 권리금 형성 지역",
+                "365일 불이 꺼지지 않는 먹자골목 메인 통로, 높은 바닥 권리금 형성 지역",
                 "점심/저녁 2모작 가능한 오피스+주거 복합 상권으로 매출 안정성 탁월",
                 "소비 성향이 강한 MZ세대 유입이 활발한 핫플레이스 상권 진입 기회"
             ],
             "오피스상권": [
-                "[직장인 수요] 고소득 직장인 배후 수요가 탄탄한 핵심 업무 지구 내 위치",
+                "고소득 직장인 배후 수요가 탄탄한 핵심 업무 지구 내 위치",
                 "법인 임차 수요가 풍부하여 장기 계약 유도가 유리한 안정적 오피스 빌딩",
                 "평일 점심/카페 매출이 보장되는 오피스 밀집 지역 내 희소한 통건물"
             ],
             "신축/리모델링": [
-                "[컨디션 최상] 최근 내외관 리모델링 완료, 추가 비용 없이 즉시 수익 창출 가능",
+                "최근 내외관 리모델링 완료, 추가 비용 없이 즉시 수익 창출 가능",
                 "트렌디한 디자인과 최신 설비(엘리베이터 등)를 갖춘 신축급 건물",
                 "매수 후 손볼 곳 없는 완벽한 관리 상태, 초보 투자자에게도 강력 추천"
             ],
             "급매물": [
-                "[긴급 매각] 소유주 사정상 시세 대비 파격적인 조건으로 진행하는 초급매 물건",
+                "소유주 사정상 시세 대비 파격적인 조건으로 진행하는 초급매 물건",
                 "다시 없을 가격 경쟁력, 지금이 바로 저점 매수의 타이밍",
                 "향후 금리 인하 시 즉각적인 자산 가치 상승이 보장된 선물 같은 매물"
             ],
             "사옥추천": [
-                "[사옥 강추] 기업의 품격을 높여줄 수려한 외관과 편리한 주차 공간 보유",
+                "기업의 품격을 높여줄 수려한 외관과 편리한 주차 공간 보유",
                 "쾌적한 업무 환경과 프라이빗한 공간 활용이 가능한 단독 사옥 최적지",
                 "임대 수익보다는 실사용 가치가 높은 매물로, 중소/중견기업 사옥으로 적극 제안"
             ],
             "메디컬입지": [
-                "[메디컬 최적] 병의원 입점에 필요한 가시성, 주차, 엘리베이터 3박자 완비",
+                "병의원 입점에 필요한 가시성, 주차, 엘리베이터 3박자 완비",
                 "약국 및 전문 병원 입점 시 고수익 임대료 책정 가능한 메디컬 특화 입지",
                 "고령 인구 및 주거 밀집 지역으로 병원 수요가 꾸준한 항아리 상권"
             ],
             "밸류업유망": [
-                "[밸류업 원석] 현재 저평가되어 있으나, 리모델링/신축 시 가치 폭발적 상승 예상",
+                "현재 저평가되어 있으나, 리모델링/신축 시 가치 폭발적 상승 예상",
                 "용적률 이득을 볼 수 있는 노후 건물로, 디벨로퍼의 감각으로 재탄생할 기회",
                 "낡은 건물을 트렌디하게 변모시켜 임대료 2배 상승을 노려볼 수 있는 밸류업 프로젝트"
+            ],
+            "프렌차이즈입점": [
+                "대형 프랜차이즈가 선호하는 입지 조건을 모두 갖춘 안테나샵 최적지",
+                "스타벅스, 맥도날드 등 우량 프랜차이즈 입점 문의가 가능한 특급 입지",
+                "배후 세대가 풍부하여 베이커리, 편의점 등 프랜차이즈 운영 시 고매출 예상"
+            ],
+            "희소성매물": [
+                "지역 내 매물이 거의 나오지 않는 희소가치 높은 위치의 단독 건물",
+                "매수 대기자는 많으나 공급이 부족한 지역으로 환금성이 매우 뛰어남",
+                "소장 가치만으로도 투자가치가 충분한 지역 내 유일무이한 랜드마크급 매물"
+            ],
+            "도심형상권": [
+                "주거와 업무, 상업 시설이 혼재된 복합 도심 상권으로 24시간 활성화",
+                "도심 내 핵심 요지에 위치하여 지가 하락 방어력이 뛰어난 안전 자산",
+                "다양한 업종 구성이 가능한 도심형 빌딩으로 임차인 유치에 매우 유리"
+            ],
+            "항아리상권": [
+                "대단지 아파트로 둘러싸인 전형적인 항아리 상권으로 독점적 지위 확보",
+                "외부 유출 없이 단지 내 고정 수요만으로도 안정적인 매출 달성 가능",
+                "학원, 병원, 생활편의시설 등 생활밀착형 업종 운영에 최적화된 상권"
             ]
         }
         
-        # 선택된 키워드 중 랜덤하게 2개 + 랜덤 추가 1개
+        # 선택된 키워드 중 랜덤하게 2~3개 뽑아서 문구 생성
         shuffled_feats = random.sample(env_features, len(env_features))
         count = 0
         for feat in shuffled_feats:
@@ -413,7 +439,6 @@ def get_land_price(pnu):
             if res.status_code == 200:
                 root = ET.fromstring(res.content)
                 if root.findtext('.//resultCode') == '00':
-                    # 공시지가 태그명: pblntfPclnd
                     price = root.find('.//pblntfPclnd')
                     if price is not None and price.text: return int(price.text)
         except: continue
@@ -462,12 +487,8 @@ def parse_xml_response(content):
 
 @st.cache_data(show_spinner=False)
 def get_cadastral_map_image(lat, lng):
-    delta = 0.0015 
-    minx, miny = lng - delta, lat - delta
-    maxx, maxy = lng + delta, lat + delta
-    bbox = f"{minx},{miny},{maxx},{maxy}"
-    layer = "LP_PA_CBND_BUBUN"
-    url = f"https://api.vworld.kr/req/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES={layer}&CRS=EPSG:4326&BBOX={bbox}&WIDTH=400&HEIGHT=300&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF&EXCEPTIONS=text/xml&KEY={VWORLD_KEY}"
+    bbox = f"{lng-0.0015},{lat-0.0015},{lng+0.0015},{lat+0.0015}"
+    url = f"https://api.vworld.kr/req/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=LP_PA_CBND_BUBUN&STYLES=LP_PA_CBND_BUBUN&CRS=EPSG:4326&BBOX={bbox}&WIDTH=400&HEIGHT=300&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF&EXCEPTIONS=text/xml&KEY={VWORLD_KEY}"
     try:
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0", "Referer": "http://localhost:8501"}, timeout=5, verify=False)
         if res.status_code == 200 and 'image' in res.headers.get('Content-Type', ''): return BytesIO(res.content)
@@ -506,8 +527,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             'use_date': info.get('useAprDay', '-')
         }
 
-        # [수정] 5개 선택된 포인트 반영
-        ai_summary_txt = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
+        # 선택된 포인트 반영
+        ai_summary_txt = "\n".join(selling_points) if selling_points else "분석된 특징이 없습니다."
 
         data_map = {
             "{{빌딩이름}}": bld_name, "{{소재지}}": full_addr, "{{용도지역}}": zoning,
@@ -545,9 +566,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if k in p_text:
                         val_str = str(mapper[k])
                         if " " in val_str:
-                            num, unit = val_str.split(' ', 1)
+                            num_part, unit_part = val_str.split(' ', 1)
                             p.text = "" 
-                            run_num = p.add_run(); run_num.text = num + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
+                            run_num = p.add_run(); run_num.text = num_part + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
                             run_unit = p.add_run(); run_unit.text = unit; run_unit.font.size = Pt(10); run_unit.font.bold = True; run_unit.font.color.rgb = black
                         else:
                             p.text = val_str
@@ -604,8 +625,12 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         if 6 < len(prs.slides):
             slide7 = prs.slides[6]
             u5_keys = ['u5_1', 'u5_2', 'u5_3', 'u5_4']
-            positions = [(Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))]
+            positions = [
+                (Cm(1.0), Cm(3.5)), (Cm(15.1), Cm(3.5)), 
+                (Cm(1.0), Cm(11.75)), (Cm(15.1), Cm(11.75))
+            ]
             w_s7, h_s7 = Cm(13.6), Cm(7.75)
+            
             for idx, u_key in enumerate(u5_keys):
                 if u_key in images_dict and images_dict[u_key]:
                     f = images_dict[u_key]; f.seek(0)
@@ -616,7 +641,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
 
-    # --- [1장짜리 요약본 (No Template) Logic] ---
+    # --- [1장짜리 요약본] ---
     prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
@@ -787,12 +812,15 @@ if addr_input:
                 with col_l2: 
                     if location.get('pnu'): st.markdown(f"<a href='https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu={location['pnu']}&mode=search&isNoScr=script' target='_blank' class='link-btn eum-btn'>📑 토지이음 규제정보 확인</a>", unsafe_allow_html=True)
             
-            if not st.session_state['zoning']: st.session_state['zoning'] = get_zoning_smart(location['lat'], location['lng'])
-            if not st.session_state['fetched_zoning']: st.session_state['fetched_zoning'] = st.session_state['zoning'] # 최초 1회 저장
+            if not st.session_state['zoning']: 
+                fetched_zoning = get_zoning_smart(location['lat'], location['lng'])
+                st.session_state['fetched_zoning'] = fetched_zoning
+            
+            if st.session_state['fetched_lp'] == 0:
+                fetched_lp = get_land_price(location['pnu'])
+                st.session_state['fetched_lp'] = fetched_lp
 
             info = get_building_info_smart(location['pnu'])
-            land_price = get_land_price(location['pnu'])
-            if land_price > 0 and st.session_state['fetched_lp'] == 0: st.session_state['fetched_lp'] = land_price # 최초 1회 저장
             
             if not info or "error" in info: st.error(f"조회 실패: {info.get('error')}")
             else:
@@ -820,7 +848,6 @@ if addr_input:
                 with c2: render_styled_block("건물명", info.get('bldNm'))
                 st.write("") 
                 
-                # 공시지가 입력칸 (자동입력 + 수정가능)
                 c_lp1, c_lp2, c_lp3 = st.columns(3)
                 with c_lp1:
                     lp_val = st.text_input("공시지가(원/㎡)", value=f"{st.session_state['fetched_lp']:,}")
@@ -833,7 +860,6 @@ if addr_input:
                 st.write("")
                 st.markdown("<hr style='margin: 10px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
-                # 용도지역 입력칸 (자동입력 + 수정가능)
                 c2_1, c2_2, c2_3 = st.columns(3)
                 with c2_1:
                     zoning_val = st.text_input("용도지역", value=st.session_state['fetched_zoning'])
@@ -896,13 +922,12 @@ if addr_input:
                 st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("---")
 
-                # [수정] AI 인사이트 생성 및 선택 기능 강화 (고정 + 갱신 로직)
                 st.subheader("🔍 AI 물건분석 (Key Insights)")
                 st.write("###### 👇 해당되는 키워드를 선택하세요 (다중선택)")
-                env_options = ["역세권", "대로변", "코너입지", "학군지", "먹자상권", "오피스상권", "숲세권", "신축/리모델링", "급매물", "사옥추천", "메디컬입지", "주차편리", "명도협의가능", "수익형", "밸류업유망", "관리상태최상"]
-                cols_check = st.columns(4); selected_envs = []
+                env_options = ["역세권", "대로변", "코너입지", "학군지", "먹자상권", "오피스상권", "숲세권", "신축/리모델링", "급매물", "사옥추천", "메디컬입지", "주차편리", "명도협의가능", "수익형", "밸류업유망", "관리상태최상", "프렌차이즈입점", "희소성매물", "도심형상권", "항아리상권"]
+                cols_check = st.columns(5); selected_envs = []
                 for i, opt in enumerate(env_options):
-                    if cols_check[i % 4].checkbox(opt): selected_envs.append(opt)
+                    if cols_check[i % 5].checkbox(opt): selected_envs.append(opt)
                 st.write("")
                 
                 with st.expander("📂 비교 분석용 엑셀 데이터 업로드 (선택사항)", expanded=True):
@@ -949,33 +974,35 @@ if addr_input:
                         # 1. 현재 선택된 아이템 확보 (고정)
                         kept_items = st.session_state.get('selling_summary', [])
                         
-                        # 2. 새로운 후보 생성 (넉넉하게 10개 생성)
+                        # 2. 새로운 후보 생성 (넉넉하게 12개 생성)
                         new_candidates = generate_dynamic_insights_text_only(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
                         
                         # 3. 고정된 아이템 + (새로운 아이템 - 중복제거) 합치기
-                        # 먼저 고정된 아이템을 넣고, 그 뒤에 새로운 아이템을 추가 (중복 제외)
                         final_pool = kept_items[:] 
                         for item in new_candidates:
                             if item not in final_pool:
                                 final_pool.append(item)
                         
-                        # 4. 상태 업데이트
+                        # 4. 상태 업데이트 (처음엔 상위 5개를 자동 선택 상태로 만듦)
                         st.session_state['ai_candidates'] = final_pool
-                        # 주의: selling_summary는 multiselect 위젯에 의해 다시 갱신되므로 여기서는 건드리지 않거나, 위젯의 default 값으로 활용됨
+                        if not kept_items: # 처음에 아무것도 선택 안된 상태라면
+                             st.session_state['selling_summary'] = final_pool[:5]
+                        else:
+                             st.session_state['selling_summary'] = kept_items
 
                 if st.session_state['ai_candidates']:
                     st.write(f"##### 💡 리포트에 포함할 문구를 선택하세요 (현재 {len(st.session_state.get('selling_summary', []))}개 선택됨)")
                     
-                    # [핵심] default에 현재 선택된(selling_summary) 값을 넣어주어 선택 상태 유지
-                    selected_insights = st.multiselect(
-                        label="인사이트 선택", 
-                        options=st.session_state['ai_candidates'], 
-                        default=st.session_state.get('selling_summary', []), # 선택된 값 유지
-                        label_visibility="collapsed"
-                    )
+                    # [수정] 체크박스 리스트 형태로 구현
+                    updated_selection = []
+                    for idx, candidate in enumerate(st.session_state['ai_candidates']):
+                        # 현재 선택 상태 확인
+                        is_selected = candidate in st.session_state.get('selling_summary', [])
+                        if st.checkbox(candidate, key=f"insight_{idx}", value=is_selected):
+                            updated_selection.append(candidate)
                     
-                    # 사용자가 위젯을 조작하면 바로 session_state에 반영
-                    st.session_state['selling_summary'] = selected_insights
+                    # 상태 업데이트
+                    st.session_state['selling_summary'] = updated_selection
 
                     if st.session_state['selling_summary']:
                         st.markdown(f"""<div class="ai-summary-box"><div class="ai-title">🌟 전문가 투자 포인트 (Key Insights)</div>""", unsafe_allow_html=True)
@@ -1001,6 +1028,7 @@ if addr_input:
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     if ppt_template: st.success("✅ 템플릿 적용됨")
                     pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, images_map, template_binary=ppt_template)
+                    # 파일명 포맷 변경
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
