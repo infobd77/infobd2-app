@@ -158,12 +158,6 @@ st.markdown("""
         .naver-btn { background-color: #03C75A; }
         .eum-btn { background-color: #1a237e; }
         .naver-btn:hover, .eum-btn:hover { opacity: 0.8; }
-        
-        /* 체크박스 텍스트 스타일 */
-        .stCheckbox label p {
-            font-size: 16px !important;
-            line-height: 1.6 !important;
-        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -175,7 +169,7 @@ VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 KAKAO_API_KEY = "2a3330b822a5933035eacec86061ee41"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
-if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = [] # 최종 선택된 것들
+if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = []
 if 'ai_candidates' not in st.session_state: st.session_state['ai_candidates'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
@@ -184,11 +178,15 @@ if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] 
 if 'fetched_lp' not in st.session_state: st.session_state['fetched_lp'] = 0
 if 'fetched_zoning' not in st.session_state: st.session_state['fetched_zoning'] = ""
 
+# [수정] 멀티셀렉트 위젯 초기값 설정을 위한 키
+if 'selected_insights_default' not in st.session_state: st.session_state['selected_insights_default'] = []
+
 def reset_analysis():
     st.session_state['selling_summary'] = []
     st.session_state['ai_candidates'] = []
     st.session_state['fetched_lp'] = 0
     st.session_state['fetched_zoning'] = ""
+    st.session_state['selected_insights_default'] = []
 
 # --- [좌표 -> 주소 변환 함수] ---
 def get_address_from_coords(lat, lng):
@@ -274,7 +272,7 @@ def generate_dynamic_insights_text_only(info, finance, zoning, env_features, use
                     candidates.append(random.choice(phrases))
         except: pass
 
-    # 3. 입지 및 키워드 분석 (이모티콘 제거 + 추가된 키워드 반영)
+    # 3. 입지 및 키워드 분석 (이모티콘 제거)
     if env_features:
         feature_phrases = {
             "역세권": [
@@ -331,30 +329,10 @@ def generate_dynamic_insights_text_only(info, finance, zoning, env_features, use
                 "현재 저평가되어 있으나, 리모델링/신축 시 가치 폭발적 상승 예상",
                 "용적률 이득을 볼 수 있는 노후 건물로, 디벨로퍼의 감각으로 재탄생할 기회",
                 "낡은 건물을 트렌디하게 변모시켜 임대료 2배 상승을 노려볼 수 있는 밸류업 프로젝트"
-            ],
-            "프렌차이즈입점": [
-                "대형 프랜차이즈가 선호하는 입지 조건을 모두 갖춘 안테나샵 최적지",
-                "스타벅스, 맥도날드 등 우량 프랜차이즈 입점 문의가 가능한 특급 입지",
-                "배후 세대가 풍부하여 베이커리, 편의점 등 프랜차이즈 운영 시 고매출 예상"
-            ],
-            "희소성매물": [
-                "지역 내 매물이 거의 나오지 않는 희소가치 높은 위치의 단독 건물",
-                "매수 대기자는 많으나 공급이 부족한 지역으로 환금성이 매우 뛰어남",
-                "소장 가치만으로도 투자가치가 충분한 지역 내 유일무이한 랜드마크급 매물"
-            ],
-            "도심형상권": [
-                "주거와 업무, 상업 시설이 혼재된 복합 도심 상권으로 24시간 활성화",
-                "도심 내 핵심 요지에 위치하여 지가 하락 방어력이 뛰어난 안전 자산",
-                "다양한 업종 구성이 가능한 도심형 빌딩으로 임차인 유치에 매우 유리"
-            ],
-            "항아리상권": [
-                "대단지 아파트로 둘러싸인 전형적인 항아리 상권으로 독점적 지위 확보",
-                "외부 유출 없이 단지 내 고정 수요만으로도 안정적인 매출 달성 가능",
-                "학원, 병원, 생활편의시설 등 생활밀착형 업종 운영에 최적화된 상권"
             ]
         }
         
-        # 선택된 키워드 중 랜덤하게 2~3개 뽑아서 문구 생성
+        # 전체 키워드 풀에서 2~3개 랜덤 선택
         shuffled_feats = random.sample(env_features, len(env_features))
         count = 0
         for feat in shuffled_feats:
@@ -368,9 +346,9 @@ def generate_dynamic_insights_text_only(info, finance, zoning, env_features, use
     # 4. 수익률 및 재무 분석
     yield_val = finance['yield']
     if yield_val >= 4.5:
-        candidates.append(f"[고수익] 연 {yield_val:.1f}%의 압도적인 수익률, 고금리 시대 최고의 방어 투자처")
+        candidates.append(f"연 {yield_val:.1f}%의 압도적인 수익률, 고금리 시대 최고의 방어 투자처")
     elif yield_val >= 3.5:
-        candidates.append(f"[안정성] 연 {yield_val:.1f}%의 탄탄한 임대 수익과 향후 지가 상승의 두 마리 토끼")
+        candidates.append(f"연 {yield_val:.1f}%의 탄탄한 임대 수익과 향후 지가 상승의 두 마리 토끼")
     else:
         candidates.append("현재 수익률보다 향후 개발 및 자산 가치 상승(Capital Gain)에 집중하는 전략적 투자")
 
@@ -439,6 +417,7 @@ def get_land_price(pnu):
             if res.status_code == 200:
                 root = ET.fromstring(res.content)
                 if root.findtext('.//resultCode') == '00':
+                    # 공시지가 태그명: pblntfPclnd
                     price = root.find('.//pblntfPclnd')
                     if price is not None and price.text: return int(price.text)
         except: continue
@@ -527,8 +506,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             'use_date': info.get('useAprDay', '-')
         }
 
-        # 선택된 포인트 반영
-        ai_summary_txt = "\n".join(selling_points) if selling_points else "분석된 특징이 없습니다."
+        ai_summary_txt = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
 
         data_map = {
             "{{빌딩이름}}": bld_name, "{{소재지}}": full_addr, "{{용도지역}}": zoning,
@@ -566,9 +544,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     if k in p_text:
                         val_str = str(mapper[k])
                         if " " in val_str:
-                            num_part, unit_part = val_str.split(' ', 1)
+                            num, unit = val_str.split(' ', 1)
                             p.text = "" 
-                            run_num = p.add_run(); run_num.text = num_part + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
+                            run_num = p.add_run(); run_num.text = num + " "; run_num.font.size = Pt(12); run_num.font.bold = True; run_num.font.color.rgb = black
                             run_unit = p.add_run(); run_unit.text = unit; run_unit.font.size = Pt(10); run_unit.font.bold = True; run_unit.font.color.rgb = black
                         else:
                             p.text = val_str
@@ -641,7 +619,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
 
-    # --- [1장짜리 요약본] ---
+    # --- [1장짜리 요약본 (No Template) Logic] ---
     prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
@@ -924,10 +902,10 @@ if addr_input:
 
                 st.subheader("🔍 AI 물건분석 (Key Insights)")
                 st.write("###### 👇 해당되는 키워드를 선택하세요 (다중선택)")
-                env_options = ["역세권", "대로변", "코너입지", "학군지", "먹자상권", "오피스상권", "숲세권", "신축/리모델링", "급매물", "사옥추천", "메디컬입지", "주차편리", "명도협의가능", "수익형", "밸류업유망", "관리상태최상", "프렌차이즈입점", "희소성매물", "도심형상권", "항아리상권"]
-                cols_check = st.columns(5); selected_envs = []
+                env_options = ["역세권", "대로변", "코너입지", "학군지", "먹자상권", "오피스상권", "숲세권", "신축/리모델링", "급매물", "사옥추천", "메디컬입지", "주차편리", "명도협의가능", "수익형", "밸류업유망", "관리상태최상"]
+                cols_check = st.columns(4); selected_envs = []
                 for i, opt in enumerate(env_options):
-                    if cols_check[i % 5].checkbox(opt): selected_envs.append(opt)
+                    if cols_check[i % 4].checkbox(opt): selected_envs.append(opt)
                 st.write("")
                 
                 with st.expander("📂 비교 분석용 엑셀 데이터 업로드 (선택사항)", expanded=True):
@@ -966,18 +944,19 @@ if addr_input:
 
                 user_comment = st.text_area("📝 추가 특징 입력 (예: 1층 스타벅스 입점, 주인세대 명도 가능 등)", height=80)
                 
-                # 버튼 로직 수정: 선택된 것은 유지하고 나머지만 갱신
+                # [수정] 버튼 이름 변경 & 고정 선택 로직
                 if st.button("인사이트요약"):
                     with st.spinner("빅데이터 분석 및 리포트 작성 중..."):
                         finance_data_for_ai = {"yield": yield_rate, "price": price_val, "land_pyeong_price_val": land_price_per_py}
                         
-                        # 1. 현재 선택된 아이템 확보 (고정)
+                        # 1. 이미 선택된 아이템은 유지
                         kept_items = st.session_state.get('selling_summary', [])
                         
-                        # 2. 새로운 후보 생성 (넉넉하게 12개 생성)
+                        # 2. 새로운 후보군 생성 (넉넉하게 12개 생성)
                         new_candidates = generate_dynamic_insights_text_only(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
                         
                         # 3. 고정된 아이템 + (새로운 아이템 - 중복제거) 합치기
+                        # 먼저 고정된 아이템을 앞에 두고, 그 뒤에 새로운 아이템을 추가
                         final_pool = kept_items[:] 
                         for item in new_candidates:
                             if item not in final_pool:
@@ -993,16 +972,16 @@ if addr_input:
                 if st.session_state['ai_candidates']:
                     st.write(f"##### 💡 리포트에 포함할 문구를 선택하세요 (현재 {len(st.session_state.get('selling_summary', []))}개 선택됨)")
                     
-                    # [수정] 체크박스 리스트 형태로 구현
-                    updated_selection = []
-                    for idx, candidate in enumerate(st.session_state['ai_candidates']):
-                        # 현재 선택 상태 확인
-                        is_selected = candidate in st.session_state.get('selling_summary', [])
-                        if st.checkbox(candidate, key=f"insight_{idx}", value=is_selected):
-                            updated_selection.append(candidate)
+                    # [핵심] default에 현재 선택된(selling_summary) 값을 넣어주어 선택 상태 유지
+                    selected_insights = st.multiselect(
+                        label="인사이트 선택", 
+                        options=st.session_state['ai_candidates'], 
+                        default=st.session_state.get('selling_summary', []), # 선택된 값 유지
+                        label_visibility="collapsed"
+                    )
                     
-                    # 상태 업데이트
-                    st.session_state['selling_summary'] = updated_selection
+                    # 사용자가 위젯을 조작하면 바로 session_state에 반영
+                    st.session_state['selling_summary'] = selected_insights
 
                     if st.session_state['selling_summary']:
                         st.markdown(f"""<div class="ai-summary-box"><div class="ai-title">🌟 전문가 투자 포인트 (Key Insights)</div>""", unsafe_allow_html=True)
@@ -1028,7 +1007,6 @@ if addr_input:
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     if ppt_template: st.success("✅ 템플릿 적용됨")
                     pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, images_map, template_binary=ppt_template)
-                    # 파일명 포맷 변경
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
