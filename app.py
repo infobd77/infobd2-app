@@ -476,6 +476,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             'use_date': use_date
         }
 
+        # [수정] 금액 단위 띄어쓰기 추가
         data_map = {
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
@@ -593,13 +594,26 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # [이미지 삽입 - 꽉 채우기 좌표]
+        # [이미지 삽입 - 꽉 채우기 좌표] - 요청사항 cm 적용
+        # S2: 24.59 x 15.74
+        # S3: 13.91 x 10.97
+        # S5: 20.4 x 15.74
+        # S6: 22.97 x 15.74
+        # S7: Same as S6
+        
+        # Center Calculation Logic (Based on 29.7cm width PPT)
+        # S2 Left: (29.7 - 24.59)/2 = 2.555
+        # S5 Left: (29.7 - 20.4)/2 = 4.65
+        # S6 Left: (29.7 - 22.97)/2 = 3.365
+        
+        # S3 is left aligned. 
+        
         img_insert_map = {
-            1: ('u1', Cm(0.5), Cm(3.5), Cm(24.59), Cm(15.74)), 
-            2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)), 
-            4: ('u3', Cm(0.5), Cm(3.5), Cm(20.4), Cm(15.74)), 
-            5: ('u4', Cm(0.5), Cm(3.5), Cm(22.97), Cm(15.74)), 
-            6: ('u5', Cm(0.5), Cm(3.5), Cm(22.97), Cm(15.74))  
+            1: ('u1', Cm(2.55), Cm(3.5), Cm(24.59), Cm(15.74)),  # Slide 2
+            2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)),   # Slide 3
+            4: ('u3', Cm(4.65), Cm(3.5), Cm(20.4), Cm(15.74)),   # Slide 5
+            5: ('u4', Cm(3.36), Cm(3.5), Cm(22.97), Cm(15.74)),  # Slide 6
+            6: ('u5', Cm(3.36), Cm(3.5), Cm(22.97), Cm(15.74))   # Slide 7
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -621,6 +635,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
 
+    # --- [1장짜리 요약본 (No Template) Logic] ---
     prs = Presentation()
     prs.slide_width = Cm(21.0)
     prs.slide_height = Cm(29.7)
