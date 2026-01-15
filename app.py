@@ -448,7 +448,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수]
+# [PPT 생성 함수 - 꽉 채우기 모드 및 좌표 수정]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
     if template_binary:
         prs = Presentation(template_binary)
@@ -543,7 +543,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # 금액 정보: 검정색 Bold 처리
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -560,7 +559,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         r.font.color.rgb = black
                     return 
 
-                # 대지면적, 연면적 -> Bold 처리
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
@@ -638,7 +636,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # [이미지 삽입]
+        # [이미지 삽입 - 꽉 채우기 좌표]
         img_insert_map = {
             1: ('u1', Cm(2.55), Cm(3.5), Cm(24.59), Cm(15.74)),  # Slide 2
             2: ('u2', Cm(1.0), Cm(3.5), Cm(13.91), Cm(10.97)),   # Slide 3
@@ -882,7 +880,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     prs.save(output)
     return output.getvalue()
 
-# [엑셀 생성]
+# [엑셀 생성 - 복구됨]
 def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
