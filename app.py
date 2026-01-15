@@ -8,6 +8,7 @@ from pptx.util import Cm, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
+from pptx.enum.dml import MSO_LINE
 import xlsxwriter
 from urllib.parse import quote_plus
 import time
@@ -643,8 +644,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 # 이미지 삽입
                 pic = slide.shapes.add_picture(img_file, l, t, width=w, height=h)
                 
-                # [스타일 적용] 회색 테두리
+                # [스타일 적용] 회색 테두리 (전체 꽉 채우기)
                 line = pic.line
+                line.visible = True  # 선이 보이도록 강제 설정
                 line.color.rgb = gray_border
                 line.width = Pt(1.5) # 테두리 두께
 
