@@ -622,17 +622,18 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for shape in slide.shapes:
                 replace_text_in_shape(shape, data_map, ctx_vals)
 
-        # --- 5. [수정됨] 이미지 삽입 로직 (좌표 전면 수정) ---
-        # 1. 박스 윤곽선을 완전히 덮을 수 있도록 크기를 키움 (Width/Height 확대)
-        # 2. 위치를 살짝 위/왼쪽으로 당김 (Left/Top 감소)
-        # 3. Slide 3의 경우 우측 표 높이에 맞춰 높이를 설정
+        # --- 5. [수정됨] 이미지 삽입 로직 (좌표 전면 수정 - 꽉 채우기) ---
+        # "여백 없이 꽉 채우기" 요청 반영
+        # Slide 2, 5, 6, 7 (전체 페이지): 가로 20.0cm 이상으로 확대, 상단 제목 제외하고 꽉 채움.
+        # Slide 3 (건물 메인): 왼쪽 절반을 여백 없이 꽉 채움. 
+        # (Slide 3의 경우 표가 약 10.8cm부터 시작하므로, 사진 너비를 10.2cm 정도로 설정하여 빈틈없이 채움)
 
         img_insert_map = {
-            1: ('u1', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 2: 위치도 (꽉 채움)
-            2: ('u2', Cm(1.0), Cm(3.5), Cm(9.5), Cm(11.5)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움, 높이 11.5로 표와 동일)
-            4: ('u3', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 5: 지적도 (꽉 채움)
-            5: ('u4', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5)), # Slide 6: 건축물대장 (꽉 채움)
-            6: ('u5', Cm(1.0), Cm(3.5), Cm(19.0), Cm(15.5))  # Slide 7: 추가사진 (꽉 채움)
+            1: ('u1', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 2: 위치도 (크게 확대)
+            2: ('u2', Cm(0.5), Cm(3.5), Cm(10.2), Cm(14.0)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움 + 하단까지)
+            4: ('u3', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 5: 지적도 (크게 확대)
+            5: ('u4', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 6: 건축물대장 (크게 확대)
+            6: ('u5', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0))  # Slide 7: 추가사진 (크게 확대)
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -875,102 +876,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
 
     output = BytesIO()
     prs.save(output)
-    return output.getvalue()
-
-# [엑셀 생성]
-def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
-    output = BytesIO()
-    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    worksheet = workbook.add_worksheet('부동산분석')
-    
-    fmt_title = workbook.add_format({'bold': True, 'font_size': 20, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#EAEAEA'})
-    fmt_label = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#F0F8FF'}) 
-    fmt_val = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'text_wrap': True})
-    fmt_val_red = workbook.add_format({'bold': True, 'font_size': 16, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'font_color': 'red'})
-    fmt_box = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'top', 'text_wrap': True})
-    fmt_header = workbook.add_format({'bold': True, 'font_size': 12, 'align': 'left'})
-
-    worksheet.set_column('A:A', 2) 
-    worksheet.set_column('B:E', 12) 
-    worksheet.set_column('F:F', 2) 
-    worksheet.set_column('G:J', 12) 
-
-    bld_name = info.get('bldNm')
-    if not bld_name or bld_name == '-':
-        dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
-        bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
-    worksheet.merge_range('B2:J3', bld_name, fmt_title)
-
-    worksheet.write('B5', '건물사진', fmt_header)
-    worksheet.merge_range('B6:E20', '', fmt_box) 
-    if uploaded_img:
-        uploaded_img.seek(0)
-        worksheet.insert_image('B6', 'building.png', {'image_data': uploaded_img, 'x_scale': 0.5, 'y_scale': 0.5, 'object_position': 2})
-
-    worksheet.write('B22', '위치도', fmt_header)
-    worksheet.merge_range('B23:E35', '', fmt_box)
-    
-    # 엑셀에도 VWorld 정적 지도 사용 (네이버 지도 정적 이미지는 유료일 수 있음)
-    map_img_xls = f"http://api.vworld.kr/req/image?service=image&request=getmap&key={VWORLD_KEY}&center={lng},{lat}&crs=EPSG:4326&zoom=17&size=600,400&format=png&basemap=GRAPHIC"
-    try:
-        res = requests.get(map_img_xls, timeout=3)
-        if res.status_code == 200:
-            worksheet.insert_image('B23', 'map.png', {'image_data': BytesIO(res.content), 'x_scale': 0.7, 'y_scale': 0.7})
-    except: pass
-
-    worksheet.write('G5', '건물개요', fmt_header)
-    
-    lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
-    bcvl_text = f"{info['bcRat']:.2f}%\n{info['vlRat']:.2f}%"
-    
-    table_data_xls = [
-        ["소재지", full_addr, "용도", zoning],
-        ["공시지가", f"{lp_py:,.0f}만/평", "대지", info['platArea_ppt']], 
-        ["도로", "6M", "연면적", info['totArea_ppt']],
-        ["준공", info['useAprDay'], "지상", info['totArea_ppt']],
-        ["규모", f"B{info['ugrndFlrCnt']}/ {info['grndFlrCnt']}F", "건축", info['archArea_ppt']],
-        ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
-        ["주차", info['parking'].split('(')[0], "주용도", info.get('mainPurpsCdNm','-')],
-        ["주구조", info.get('strctCdNm','-'), "보증금", f"{finance['deposit']:,.0f}만"],
-        ["융자", f"{finance['loan']:,}억", "임대료", f"{finance['rent']:,}만"],
-        ["수익률", f"{finance['yield']:.1f}%", "관리비", f"{finance['maintenance']:,}만"],
-        ["매도가", f"{finance['price']:,}억", "", ""] 
-    ]
-
-    start_row = 5
-    for i, row in enumerate(table_data_xls):
-        worksheet.write(start_row + i, 6, row[0], fmt_label) 
-        if row[0] == "매도가":
-             worksheet.merge_range(start_row + i, 7, start_row + i, 9, row[1], fmt_val_red)
-        else:
-             worksheet.write(start_row + i, 7, row[1], fmt_val) 
-        
-        if row[0] != "매도가":
-            worksheet.write(start_row + i, 8, row[2], fmt_label) 
-            worksheet.write(start_row + i, 9, row[3], fmt_val) 
-
-    worksheet.write('G17', '지적도', fmt_header) 
-    worksheet.merge_range('G18:J26', '', fmt_box)
-    cad_img = get_cadastral_map_image(lat, lng)
-    if cad_img:
-        worksheet.insert_image('G18', 'cad.png', {'image_data': cad_img, 'x_scale': 0.6, 'y_scale': 0.6})
-
-    worksheet.write('G28', '건물특징', fmt_header)
-    worksheet.merge_range('G29:J35', '', fmt_box)
-    
-    summary_text = ""
-    if selling_points:
-        for idx, pt in enumerate(selling_points[:5]):
-            clean = pt.replace("</span>", "").replace("**", "").strip()
-            summary_text += f"• {clean}\n"
-    else:
-        summary_text = "• 역세권 입지로 투자가치 우수\n• 안정적인 임대 수익 기대"
-        
-    worksheet.write('G29', summary_text, fmt_box)
-
-    worksheet.merge_range('B37:J37', "JS 제이에스부동산(주) 김창익 이사 010-6595-5700", fmt_title)
-
-    workbook.close()
     return output.getvalue()
 
 # [메인 실행]
