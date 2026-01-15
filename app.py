@@ -628,11 +628,11 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         # 3. Slide 3의 경우 우측 표 높이에 맞춰 높이를 설정
 
         img_insert_map = {
-            1: ('u1', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 2: 위치도 (크게 확대)
-            2: ('u2', Cm(0.5), Cm(3.5), Cm(10.2), Cm(14.0)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움 + 하단까지)
-            4: ('u3', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 5: 지적도 (크게 확대)
-            5: ('u4', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0)), # Slide 6: 건축물대장 (크게 확대)
-            6: ('u5', Cm(0.5), Cm(3.5), Cm(20.0), Cm(16.0))  # Slide 7: 추가사진 (크게 확대)
+            1: ('u1', Cm(0.8), Cm(3.8), Cm(19.5), Cm(14.5)), # Slide 2: 위치도 (꽉 채움)
+            2: ('u2', Cm(0.8), Cm(3.5), Cm(9.8), Cm(12.0)),  # Slide 3: 건물 메인 (좌측 영역 꽉 채움 + 하단까지)
+            4: ('u3', Cm(0.8), Cm(3.8), Cm(19.5), Cm(14.5)), # Slide 5: 지적도 (꽉 채움)
+            5: ('u4', Cm(0.8), Cm(3.8), Cm(19.5), Cm(14.5)), # Slide 6: 건축물대장 (꽉 채움)
+            6: ('u5', Cm(0.8), Cm(3.8), Cm(19.5), Cm(14.5))  # Slide 7: 추가사진 (꽉 채움)
         }
 
         for s_idx, (key, l, t, w, h) in img_insert_map.items():
@@ -878,6 +878,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     return output.getvalue()
 
 # [엑셀 생성]
+# --- [복구된 함수] create_excel 함수를 누락 없이 다시 추가했습니다. ---
 def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, uploaded_img):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
