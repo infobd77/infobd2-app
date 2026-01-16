@@ -165,7 +165,8 @@ USER_KEY = "Xl5W1ALUkfEhomDR8CBUoqBMRXphLTIB7CuTto0mjsg0CQQspd7oUEmAwmw724YtkjnV
 VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
-if 'selling_summary' not in st.session_state: st.session_state['selling_summary'] = []
+if 'generated_insights' not in st.session_state: st.session_state['generated_insights'] = [] # 생성된 후보군
+if 'final_selected_insights' not in st.session_state: st.session_state['final_selected_insights'] = [] # 사용자가 최종 선택한 것
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
@@ -173,7 +174,8 @@ if 'fetched_lp' not in st.session_state: st.session_state['fetched_lp'] = 0
 if 'fetched_zoning' not in st.session_state: st.session_state['fetched_zoning'] = ""
 
 def reset_analysis():
-    st.session_state['selling_summary'] = []
+    st.session_state['generated_insights'] = []
+    st.session_state['final_selected_insights'] = []
     st.session_state['fetched_lp'] = 0
     st.session_state['fetched_zoning'] = ""
 
@@ -241,8 +243,8 @@ def format_area_ppt(val_str):
         return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
-# --- [AI 인사이트 생성 (전문가/마케팅/이모티콘제거)] ---
-def generate_insight_summary(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
+# --- [AI 인사이트 생성 (전문가/마케팅)] ---
+def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
     # [마케팅 DB: 이모티콘 제거, 전문 용어 사용]
@@ -321,6 +323,26 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
             "■ [밸류업(Value-up) 최적] 리모델링 또는 신축 시 용적률 이득과 임대료 상승 여력이 확실한 원석 매물",
             "☑ [자산 가치 상승] 현재 저평가되어 있으나 적극적인 MD 구성과 리노베이션으로 가치를 극대화할 수 있는 곳",
             "■ [디벨로퍼 추천] 명도가 용이하고 대지 형상이 우수하여 신축 부지로 활용 시 개발 이익 극대화 예상"
+        ],
+        "주차편리": [
+            "■ [주차 스트레스 Zero] 강남권에서 보기 드문 넉넉한 주차 공간 확보로 임차인 및 내방객 만족도 최상",
+            "☑ [자주식 주차] 기계식 주차의 불편함 없는 편리한 자주식 주차 공간으로 대형 차량 진입도 수월"
+        ],
+        "명도협의가능": [
+            "■ [즉시 명도 가능] 매수 후 즉시 리모델링이나 신축이 가능하도록 명도 협의가 완료된 깔끔한 매물",
+            "☑ [실사용자 추천] 복잡한 명도 과정 없이 바로 입주하여 사용할 수 있어 실사용 목적 매수자에게 최적"
+        ],
+        "수익형": [
+            "■ [고수익 수익형] 탄탄한 임차 구성을 바탕으로 매월 안정적인 현금 흐름이 발생하는 알짜 수익형 부동산",
+            "☑ [공실률 제로 도전] 우수한 입지와 합리적인 임대료 책정으로 공실 위험 없이 꾸준한 수익 창출 가능"
+        ],
+        "관리상태최상": [
+            "■ [주인 직영 관리] 건물주가 직접 거주하며 꼼꼼하게 관리하여 내외관 컨디션이 신축급으로 유지된 건물",
+            "☑ [손볼 곳 없음] 누수나 하자 없이 완벽하게 관리되어 매수 후 추가적인 유지보수 비용이 들지 않는 매물"
+        ],
+        "숲세권": [
+            "■ [쾌적한 숲세권] 도심 속에서 자연을 느낄 수 있는 쾌적한 업무 환경으로 창의적인 업무 능률 향상",
+            "☑ [힐링 오피스] 인근 공원 및 녹지와 인접하여 산책과 휴식이 가능한 워라밸 최적화 입지"
         ]
     }
     
@@ -329,14 +351,13 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
         points.append(f"📌 {user_comment.strip()}")
 
     # 2. 키워드 기반 (랜덤)
-    selected_count = 0
     if env_features:
+        # 키워드별로 하나씩 다 가져와서 풍부하게 만듦
         random.shuffle(env_features)
         for feat in env_features:
             if feat in marketing_db:
+                # 해당 키워드의 문구 중 하나 랜덤 선택
                 points.append(random.choice(marketing_db[feat]))
-                selected_count += 1
-                if selected_count >= 3: break 
 
     # 3. 가격 경쟁력 (전문 용어 사용)
     if comp_df is not None and not comp_df.empty:
@@ -390,12 +411,12 @@ def generate_insight_summary(info, finance, zoning, env_features, user_comment, 
         "■ [불패 입지] 한번 들어오면 나가지 않는 임차인들이 선호하는 검증된 명당 자리"
     ]
     
-    while len(points) < 5:
-        pick = random.choice(fallback_msgs)
-        if pick not in points: points.append(pick)
-        else: break
+    random.shuffle(fallback_msgs)
+    for msg in fallback_msgs:
+        points.append(msg)
         
-    return points[:6]
+    # 중복 제거 및 리스트 반환
+    return list(dict.fromkeys(points))
 
 # --- [API 조회 함수들] ---
 @st.cache_data(show_spinner=False)
@@ -537,9 +558,8 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 - 오류 수정됨]
+# [PPT 생성 함수]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
-    # [수정] ctx_vals 계산을 상단으로 이동하여 Scope 문제 해결
     bld_name = info.get('bldNm')
     if not bld_name or bld_name == '-':
         dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
@@ -554,7 +574,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     total_lp_num = int(total_lp_val / 100000000) if total_lp_val > 0 else 0
     total_lp_str_final = f"합 {total_lp_num:,}억" if total_lp_num > 0 else "-"
 
-    ai_points_str = "\n".join(selling_points[:4]) if selling_points else "분석된 특징이 없습니다."
+    ai_points_str = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
 
     plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
     plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "-"
@@ -579,7 +599,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
-    # 모든 경우에 사용할 값 딕셔너리
     ctx_vals = {
         'plat_m2': plat_m2, 'plat_py': plat_py,
         'tot_m2': tot_m2, 'tot_py': tot_py,
@@ -627,11 +646,21 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건물사진}}": ""
         }
 
-        # 내부 함수 정의 (ctx_vals가 상위 스코프에 있으므로 접근 가능)
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
+                # [요청 1] 공시지가: 검정, 굵게
+                if "{{공시지가}}" in p_text:
+                    p.text = str(mapper["{{공시지가}}"])
+                    for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(12)
+                    return
+                # [요청 2] 공시지가 총액: 빨강, 굵게
+                if "{{공시지가 총액}}" in p_text:
+                    p.text = str(mapper["{{공시지가 총액}}"])
+                    for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
+                    return
+
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -721,7 +750,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             if shape.has_text_frame:
                 replace_text_in_frame(shape.text_frame, mapper, ctx)
         
-        # 텍스트 치환 실행
         for slide in prs.slides:
             for shape in slide.shapes: replace_text_in_shape(shape, data_map, ctx_vals)
 
@@ -754,7 +782,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 2. 템플릿 없는 경우 (오류 방지용 1장 기본 PPT)
+    # 2. 템플릿 없는 경우 (기본 PPT)
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1081,16 +1109,34 @@ if addr_input:
                 
                 # [요청 5] 버튼 이름 변경 ("전문가" 제거 -> "인사이트요약")
                 if st.button("🤖 인사이트요약 (Click)"):
-                    with st.spinner("빅데이터 분석 및 리포트 작성 중..."):
+                    with st.spinner("빅데이터 분석 및 리포트 생성 중..."):
                         finance_data_for_ai = {"yield": yield_rate, "price": price_val, "land_pyeong_price_val": land_price_per_py}
-                        # [요청 8, 9] 랜덤성 강화된 함수 호출
-                        summary_points = generate_insight_summary(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
-                        st.session_state['selling_summary'] = summary_points
-                
-                if st.session_state['selling_summary']:
-                    # [요청 6] 제목 변경 "투자포인트 내용"
+                        # [요청 8, 9] 후보군 생성
+                        generated_candidates = generate_insight_candidates(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
+                        st.session_state['generated_insights'] = generated_candidates
+                        st.session_state['final_selected_insights'] = [] # 초기화
+
+                # [요청 11] 생성된 인사이트 중 사용자가 선택
+                if st.session_state['generated_insights']:
+                    st.write("###### 💡 생성된 투자포인트 중 사용할 내용을 선택하세요 (최대 5개)")
+                    selected_indices = []
+                    
+                    # 체크박스로 리스트 출력
+                    for idx, point in enumerate(st.session_state['generated_insights']):
+                        if st.checkbox(point, key=f"insight_{idx}"):
+                            selected_indices.append(point)
+                    
+                    st.session_state['final_selected_insights'] = selected_indices
+
+                    if len(st.session_state['final_selected_insights']) > 5:
+                        st.warning("⚠️ 최대 5개까지만 선택 가능합니다. 상위 5개만 반영됩니다.")
+                        st.session_state['final_selected_insights'] = st.session_state['final_selected_insights'][:5]
+
+                # [요청 6, 12] 선택된 내용 보여주기
+                if st.session_state['final_selected_insights']:
                     st.markdown(f"""<div class="ai-summary-box"><div class="ai-title">🌟 투자포인트 내용</div>""", unsafe_allow_html=True)
-                    for point in st.session_state['selling_summary']: st.markdown(f"<div class='insight-item'>{point}</div>", unsafe_allow_html=True)
+                    for point in st.session_state['final_selected_insights']: 
+                        st.markdown(f"<div class='insight-item'>{point}</div>", unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
                 st.markdown("---")
@@ -1103,7 +1149,9 @@ if addr_input:
                     "tot_pyeong_price": f"{tot_price_per_py:,.0f} 만원"
                 }
                 z_val = st.session_state.get('zoning', '') if isinstance(st.session_state.get('zoning', ''), str) else ""
-                current_summary = st.session_state.get('selling_summary', [])
+                
+                # 최종 선택된 포인트만 전달
+                final_summary = st.session_state.get('final_selected_insights', [])
                 file_for_excel = u2 if 'u2' in locals() else None
 
                 c_ppt, c_xls = st.columns([1, 1])
@@ -1111,17 +1159,17 @@ if addr_input:
                     st.write("##### 📥 PPT 저장")
                     ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
                     if ppt_template: st.success("✅ 템플릿 적용됨")
-                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, images_map, template_binary=ppt_template)
+                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, final_summary, images_map, template_binary=ppt_template)
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
-                    # [오류 해결] pptx_file이 None이 아닐 때만 버튼 활성화
+                    
                     if pptx_file:
                         st.download_button(label="PPT 다운로드", data=pptx_file, file_name=pptx_name, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True)
                     else:
                         st.error("PPT 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
                 with c_xls:
                     st.write("##### 📥 엑셀 저장")
-                    xlsx_file = create_excel(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, current_summary, file_for_excel)
+                    xlsx_file = create_excel(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, final_summary, file_for_excel)
                     xlsx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.xlsx"
                     st.download_button(label="엑셀 다운로드", data=xlsx_file, file_name=xlsx_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
