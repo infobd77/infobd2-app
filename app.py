@@ -39,6 +39,7 @@ st.markdown("""
         button[data-testid="stNumberInputStepUp"] { display: none !important; }
         .stNumberInput label { display: none; }
         
+        /* 기본 텍스트 인풋 스타일 */
         input[type="text"] { 
             text-align: right !important; 
             font-size: 18px !important; 
@@ -156,6 +157,16 @@ st.markdown("""
             margin-bottom: 6px;
             border: 1px solid #bbdefb;
         }
+        
+        /* [추가] 면적 입력칸 숫자 크게 */
+        div[data-testid="stTextInput"] input[aria-label="대지면적"],
+        div[data-testid="stTextInput"] input[aria-label="연면적"],
+        div[data-testid="stTextInput"] input[aria-label="건축면적"],
+        div[data-testid="stTextInput"] input[aria-label="지상면적"] {
+            font-size: 24px !important;
+            font-weight: 800 !important;
+            color: #000 !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -203,20 +214,19 @@ def render_styled_block(label, value, is_area=False):
     </div>
     """, unsafe_allow_html=True)
 
-# [수정] 수기 작성 가능한 면적 입력 함수 (빨간색 평수 자동 산출)
+# [수정] 수기 작성 가능한 면적 입력 함수 (빨간색 평수 크게, 값도 크게)
 def editable_area_input(label, key, default_val):
     val_str = st.text_input(label, value=str(default_val), key=key)
     try:
         val_float = float(str(val_str).replace(',', ''))
         pyeong = val_float * 0.3025
-        # 빨간색 평수 표시
-        st.markdown(f"<div style='color: #D32F2F; font-size: 14px; font-weight: bold; margin-top: -5px; text-align: right;'>{pyeong:,.1f} 평</div>", unsafe_allow_html=True)
+        # 빨간색 평수 표시 (24px로 확대)
+        st.markdown(f"<div style='color: #D32F2F; font-size: 24px; font-weight: 800; margin-top: -5px; text-align: right;'>{pyeong:,.1f} 평</div>", unsafe_allow_html=True)
         return val_float
     except:
-        st.markdown(f"<div style='color: #D32F2F; font-size: 14px; font-weight: bold; margin-top: -5px; text-align: right;'>- 평</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color: #D32F2F; font-size: 24px; font-weight: 800; margin-top: -5px; text-align: right;'>- 평</div>", unsafe_allow_html=True)
         return 0.0
 
-# [수정] 수기 작성 가능한 일반 텍스트 입력 함수
 def editable_text_input(label, key, default_val):
     return st.text_input(label, value=str(default_val), key=key)
 
@@ -559,7 +569,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 - 오류수정완료]
+# [PPT 생성 함수]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
     bld_name = info.get('bldNm')
     if not bld_name or bld_name == '-':
@@ -619,12 +629,14 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{AI물건분석내용 4가지 }}": ai_points_str,
             "{{공시지가}}": lp_str_final,
             "{{공시지가 총액}}": total_lp_str_final,
+            "{{교통편의}}": info.get('traffic', '-'), # [추가]
+            "{{도로상황}}": info.get('road', '-'),    # [추가]
             "{{준공년도}}": use_date,
             "{{건물규모}}": info.get('scale_str', '-'),
-            "{{건폐율}}": info.get('bcRat_str', '-'),  # 수정: info에서 가져옴 (원래는 bcRat였으나 수기입력으로 인해 bcRat_str로 저장되지 않았다면 예외처리 필요)
-            "{{용적률}}": info.get('vlRat_str', '-'),
-            "{{승강기}}": info.get('rideUseElvtCnt', '-'),
-            "{{주차대수}}": info.get('parking', '-'),
+            "{{건폐율}}": info.get('bc_vl_str', '-'),  # [수정] 건폐율 자리에 통합문자열 매핑
+            "{{용적률}}": "",                          # [수정] 용적률 자리는 비움 (건폐율에서 한꺼번에 표기)
+            "{{승강기}}": info.get('rideUseElvtCnt', '-'), # [수정] 승강기 자리에 통합문자열
+            "{{주차대수}}": "",                            # [수정] 주차대수 비움
             "{{건물주구조}}": info.get('strctCdNm', '-'),
             "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
             "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
@@ -640,26 +652,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건축물대장}}": "",
             "{{건물사진}}": ""
         }
-        
-        # 건폐/용적 수기입력값 매핑 보정 (bc_vl_str를 사용하거나 개별 값 사용)
-        # 위 UI 코드에서 bc_vl_str로 통합입력했으므로, 템플릿의 {{건폐율}}, {{용적률}}을 찾아서 처리해야함
-        # 하지만 UI에서 bc_vl_str는 "50% / 200%" 처럼 들어감.
-        # 단순히 텍스트 치환을 위해 data_map에 임시 값 넣고, 아래 loop에서 bc_vl_str를 쪼개서 넣거나 통으로 넣어야 함.
-        # 여기서는 편의상 건폐/용적 통합 텍스트를 {{건폐율}} 자리에 넣고 {{용적률}}은 빈칸으로 두거나, 
-        # 사용자가 "50%" "200%" 따로 입력하게 하지 않고 합쳐서 입력했으므로 템플릿이 {{건폐율}}/{{용적률}} 형태라면
-        # replace 로직에서 적절히 처리해야 함. 
-        # 가장 안전한 방법: UI 입력값을 그대로 data_map에 넣기. 
-        # UI 코드에서 bc_vl_str에 "50% / 200%"가 들어있음. 
-        # 만약 템플릿에 {{건/용}} 같은 통합 키가 없고 {{건폐율}}, {{용적률}} 따로 있다면 
-        # UI에서 입력받은 bc_vl_str을 분리해서 넣어주는게 좋음. 
-        # 하지만 사용자가 "50/200"이라 썼는지 "50% / 200%"라 썼는지 모름.
-        # 따라서 여기서는 data_map의 {{건폐율}}에 info['bc_vl_str'] 전체를 넣고, {{용적률}}은 공란 처리하는 방식이나
-        # 혹은 UI에서 건폐, 용적을 따로 입력받는게 낫지만, 요청사항대로 수기작성 "건폐/용적률" 하나로 퉁쳤으므로 
-        # {{건폐율}} 키워드가 발견되면 그 자리에 bc_vl_str 전체를 넣겠습니다.
-
-        if 'bc_vl_str' in info:
-             data_map["{{건폐율}}"] = info['bc_vl_str']
-             data_map["{{용적률}}"] = "" # 겹쳐서 나오지 않게
 
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
@@ -835,19 +827,42 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         table = slide.shapes.add_table(11, 4, Cm(10.8), Cm(3.5), Cm(9.2), Cm(11.5)).table
         table.columns[0].width = Cm(2.3); table.columns[1].width = Cm(2.3); table.columns[2].width = Cm(2.3); table.columns[3].width = Cm(2.3)
         
-        # [수정] KeyError 방지: 직접 포맷팅
+        # [수정] KeyError 방지 & 교통/도로 추가
         data = [
             ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", lp_str_final],
             ["대지", f"{info['platArea']:.2f}㎡ ({info['platArea']*0.3025:.1f}평)", "도로", "M"], ["연면적", f"{info['totArea']:.2f}㎡ ({info['totArea']*0.3025:.1f}평)", "준공", use_date],
             ["지상", f"{info['totArea']:.2f}㎡", "규모", info.get('scale_str', '-')], ["건축", f"{info.get('archArea_val',0):.2f}㎡", "승강기", info.get('rideUseElvtCnt','-')],
             ["건/용", info.get('bc_vl_str', '-'), "주차", info.get('parking','-')], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
+            ["교통편의", info.get('traffic', '-'), "도로상황", info.get('road', '-')], # [추가]
             ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
             ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
         ]
-        for r in range(11):
+        
+        # 기본 PPT 테이블 12행으로 확장 필요 (교통/도로 추가됨에 따라)
+        # 위 data list는 11개 행임. 기존 11행에서 보증금 줄을 내리고 교통/도로를 삽입해야 함.
+        # 기존: 0소재지 1용도 2대지 3연면 4지상 5건축 6건용 7주차 8보증 9임대 10관리 (총 11줄)
+        # 주차(6) 다음, 보증금(8) 전에 교통/도로 넣으면 좋음.
+        # 인덱스 조정: 0~7(주구조)까지 동일. 8에 교통/도로 삽입. 9~11에 금융정보. 총 12행.
+        # table row count를 12로 늘려야 함.
+        
+        # 테이블 다시 생성 (기존 코드 덮어씀)
+        table = slide.shapes.add_table(12, 4, Cm(10.8), Cm(3.5), Cm(9.2), Cm(12.5)).table # 높이 약간 늘림
+        table.columns[0].width = Cm(2.3); table.columns[1].width = Cm(2.3); table.columns[2].width = Cm(2.3); table.columns[3].width = Cm(2.3)
+
+        data = [
+            ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", lp_str_final],
+            ["대지", f"{info['platArea']:.2f}㎡", "도로", "M"], ["연면적", f"{info['totArea']:.2f}㎡", "준공", use_date],
+            ["지상", f"{info['totArea']:.2f}㎡", "규모", info.get('scale_str', '-')], ["건축", f"{info.get('archArea_val',0):.2f}㎡", "승강기", info.get('rideUseElvtCnt','-')],
+            ["건/용", info.get('bc_vl_str', '-'), "주차", "-"], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
+            ["교통", info.get('traffic', '-'), "도로상황", info.get('road', '-')], # [추가된 행]
+            ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
+            ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
+        ]
+
+        for r in range(12):
             for c in range(4):
                 cell = table.cell(r, c); cell.text = str(data[r][c]); cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-                p = cell.text_frame.paragraphs[0]; p.alignment = PP_ALIGN.CENTER; p.font.size = Pt(9); p.font.name = "맑은 고딕"
+                p = cell.text_frame.paragraphs[0]; p.alignment = PP_ALIGN.CENTER; p.font.size = Pt(8); p.font.name = "맑은 고딕"
                 cell.fill.solid(); cell.fill.fore_color.rgb = RGBColor(240, 248, 255) if c % 2 == 0 else RGBColor(255, 255, 255)
 
         lbl_ai = slide.shapes.add_textbox(Cm(10.8), Cm(23.9), Cm(9.2), Cm(0.6)); lbl_ai.text_frame.text = "투자포인트 내용"; lbl_ai.text_frame.paragraphs[0].font.bold=True
@@ -1001,7 +1016,7 @@ if addr_input:
                 with c2: info['bldNm'] = editable_text_input("건물명", "bldNm", info.get('bldNm', '-'))
                 st.write("") 
                 
-                # 공시지가 및 용도지역 (기존 유지)
+                # 공시지가, 총액, 교통/도로
                 c_lp1, c_lp2, c_lp3 = st.columns(3)
                 with c_lp1:
                     lp_val = st.text_input("공시지가(원/㎡)", value=f"{st.session_state['fetched_lp']:,}")
@@ -1010,11 +1025,17 @@ if addr_input:
                 with c_lp2:
                     if land_price > 0 and info['platArea'] > 0: render_styled_block("공시지가 총액(추정)", f"{land_price * info['platArea'] / 100000000:,.2f}억")
                     else: render_styled_block("공시지가 총액", "-")
-                with c_lp3: st.empty()
+                
+                # [추가] 교통편의, 도로상황 수기 입력
+                with c_lp3: 
+                    c_tr, c_rd = st.columns(2)
+                    info['traffic'] = c_tr.text_input("교통편의")
+                    info['road'] = c_rd.text_input("도로상황")
+
                 st.write("")
                 st.markdown("<hr style='margin: 10px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
-                # [수정] 수기 작성 가능 + 빨간 평수 자동 계산
+                # [수정] 수기 작성 가능 + 빨간 평수 자동 계산 + 글자크기 확대
                 c2_1, c2_2, c2_3 = st.columns(3)
                 with c2_1:
                     zoning_val = st.text_input("용도지역", value=st.session_state['fetched_zoning'])
@@ -1049,12 +1070,12 @@ if addr_input:
                     def_scale = f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F"
                     info['scale_str'] = editable_text_input("건물규모", "scale", def_scale)
                 with c4_2: 
-                    # 승강기/주차
+                    # 승강기/주차 [수정] 통합
                     def_ev_pk = f"{info.get('rideUseElvtCnt')} / {info.get('parking')}"
-                    info['rideUseElvtCnt'] = editable_text_input("승강기/주차", "ev_pk", def_ev_pk) # 합쳐서 저장
-                    info['parking'] = info['rideUseElvtCnt'] # 엑셀 호환을 위해 일단 매핑
+                    info['rideUseElvtCnt'] = editable_text_input("승강기/주차", "ev_pk", def_ev_pk) 
+                    info['parking'] = info['rideUseElvtCnt'] 
                 with c4_3: 
-                    # 건폐/용적
+                    # 건폐/용적 [수정] 통합
                     def_bc_vl = f"{info.get('bcRat')}% / {info.get('vlRat')}%"
                     info['bc_vl_str'] = editable_text_input("건폐/용적", "bc_vl", def_bc_vl)
                 
