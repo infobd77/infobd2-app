@@ -158,7 +158,7 @@ st.markdown("""
             border: 1px solid #bbdefb;
         }
         
-        /* [추가] 면적 입력칸 숫자 크게 */
+        /* 면적 입력칸 숫자 크게 */
         div[data-testid="stTextInput"] input[aria-label="대지면적"],
         div[data-testid="stTextInput"] input[aria-label="연면적"],
         div[data-testid="stTextInput"] input[aria-label="건축면적"],
@@ -215,13 +215,11 @@ def render_styled_block(label, value, is_area=False):
     </div>
     """, unsafe_allow_html=True)
 
-# [수정] 수기 작성 가능한 면적 입력 함수 (빨간색 평수 크게, 값도 크게)
 def editable_area_input(label, key, default_val):
     val_str = st.text_input(label, value=str(default_val), key=key)
     try:
         val_float = float(str(val_str).replace(',', ''))
         pyeong = val_float * 0.3025
-        # 빨간색 평수 표시 (24px로 확대)
         st.markdown(f"<div style='color: #D32F2F; font-size: 24px; font-weight: 800; margin-top: -5px; text-align: right;'>{pyeong:,.1f} 평</div>", unsafe_allow_html=True)
         return val_float
     except:
@@ -276,7 +274,6 @@ def format_area_ppt(val_str):
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
-    # [수정] 모든 문구 앞에 ☑ 박스 고정
     marketing_db = {
         "역세권": [
             "☑ [초역세권] 풍부한 유동인구와 직장인 수요 독점하는 핵심 입지",
@@ -571,9 +568,15 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수]
+# [PPT 생성 함수 - 오류수정완료: 변수정의 위치 변경]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
-    # 1. 변수 정의 및 계산 (최상단) -> NameError 방지
+    # 1. 공통 변수 정의 (최상단) -> Scope Error 방지
+    deep_blue = RGBColor(0, 51, 153) 
+    deep_red = RGBColor(204, 0, 0)   
+    black = RGBColor(0, 0, 0)
+    gray_border = RGBColor(128, 128, 128)
+    dark_gray_border = RGBColor(80, 80, 80)
+
     bld_name = info.get('bldNm')
     if not bld_name or bld_name == '-':
         dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
@@ -607,7 +610,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
-    # 2. Context Dictionary 정의
+    # Context Dictionary 정의 (템플릿 안쓸때도 필요하면 사용)
     ctx_vals = {
         'plat_m2': plat_m2, 'plat_py': plat_py,
         'tot_m2': tot_m2, 'tot_py': tot_py,
@@ -616,57 +619,53 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         'use_date': use_date
     }
 
-    # 3. Data Map 정의 (건폐율 등 수기입력값 매핑)
-    data_map = {
-        "{{빌딩이름}}": bld_name,
-        "{{소재지}}": full_addr,
-        "{{용도지역}}": zoning,
-        "{{AI물건분석내용 4가지 }}": ai_points_str,
-        "{{공시지가}}": lp_str_final,
-        "{{공시지가 총액}}": total_lp_str_final,
-        "{{교통편의}}": info.get('traffic', '-'), 
-        "{{도로상황}}": info.get('road', '-'),    
-        "{{준공년도}}": use_date,
-        "{{건물규모}}": info.get('scale_str', '-'),
-        "{{건폐율}}": info.get('bc_vl_str', '-'), # 수기입력값 (50% / 200%)
-        "{{용적률}}": "",                         # 통합입력 했으므로 비움
-        "{{승강기}}": info.get('rideUseElvtCnt', '-'), # 수기입력값
-        "{{주차대수}}": "",                            # 통합입력 했으므로 비움
-        "{{건물주구조}}": info.get('strctCdNm', '-'),
-        "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
-        "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
-        "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
-        "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
-        "{{수익률}}": f"년 {finance['yield']:.1f}%" if finance['yield'] else "-",
-        "{{융자금}}": f"{finance['loan']:,} 억원" if finance['loan'] else "-",
-        "{{매매금액}}": f"{finance['price']:,} 억원" if finance['price'] else "-",
-        "{{대지평단가}}": market_price_str,
-        "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
-        "{{위치도}}": "", 
-        "{{지적도}}": "",
-        "{{건축물대장}}": "",
-        "{{건물사진}}": ""
-    }
-    
-    # 4. 템플릿 처리 로직
     if template_binary:
         prs = Presentation(template_binary)
         
-        deep_blue = RGBColor(0, 51, 153) 
-        deep_red = RGBColor(204, 0, 0)   
-        black = RGBColor(0, 0, 0)
+        data_map = {
+            "{{빌딩이름}}": bld_name,
+            "{{소재지}}": full_addr,
+            "{{용도지역}}": zoning,
+            "{{AI물건분석내용 4가지 }}": ai_points_str,
+            "{{공시지가}}": lp_str_final,
+            "{{공시지가 총액}}": total_lp_str_final,
+            "{{교통편의}}": info.get('traffic', '-'), 
+            "{{도로상황}}": info.get('road', '-'),    
+            "{{준공년도}}": use_date,
+            "{{건물규모}}": info.get('scale_str', '-'),
+            "{{건폐율}}": info.get('bc_vl_str', '-'),  
+            "{{용적률}}": "",                          
+            "{{승강기}}": info.get('rideUseElvtCnt', '-'), 
+            "{{주차대수}}": "",                            
+            "{{건물주구조}}": info.get('strctCdNm', '-'),
+            "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
+            "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
+            "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
+            "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
+            "{{수익률}}": f"년 {finance['yield']:.1f}%" if finance['yield'] else "-",
+            "{{융자금}}": f"{finance['loan']:,} 억원" if finance['loan'] else "-",
+            "{{매매금액}}": f"{finance['price']:,} 억원" if finance['price'] else "-",
+            "{{대지평단가}}": market_price_str,
+            "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
+            "{{위치도}}": "", 
+            "{{지적도}}": "",
+            "{{건축물대장}}": "",
+            "{{건물사진}}": ""
+        }
+        
+        if 'bc_vl_str' in info:
+             data_map["{{건폐율}}"] = info['bc_vl_str']
+             data_map["{{용적률}}"] = "" 
 
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # AI분석 내용
                 if "{{AI물건분석내용 4가지 }}" in p_text:
                     p.text = str(mapper["{{AI물건분석내용 4가지 }}"])
                     for r in p.runs: r.font.size = Pt(10); r.font.name = "맑은 고딕"
                     return
 
-                # 공시지가 관련
                 if "{{공시지가}}" in p_text:
                     p.text = str(mapper["{{공시지가}}"])
                     for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(10)
@@ -676,7 +675,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
                     return
 
-                # 금융정보
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -694,7 +692,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = black
                     return 
 
-                # 매매금액
                 if "{{매매금액}}" in p_text:
                     val_str = str(mapper["{{매매금액}}"])
                     if " " in val_str:
@@ -707,7 +704,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         for r in p.runs: r.font.size = Pt(16); r.font.bold = True; r.font.color.rgb = deep_blue
                     continue
 
-                # 면적 관련
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
@@ -801,7 +797,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결
+    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결 및 Scope 문제 해결
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1182,8 +1178,13 @@ if addr_input:
                         finance_data_for_ai = {"yield": yield_rate, "price": price_val, "land_pyeong_price_val": land_price_per_py}
                         # [요청 8, 9] 후보군 생성
                         generated_candidates = generate_insight_candidates(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
-                        st.session_state['generated_candidates'] = generated_candidates
-                        st.session_state['final_selected_insights'] = [] # 초기화
+                        
+                        # [수정] 갱신 시 이미 선택된 내용은 후보군에서 제외하고 선택된 내용은 유지
+                        current_selected = st.session_state.get('final_selected_insights', [])
+                        filtered_candidates = [c for c in generated_candidates if c not in current_selected]
+                        
+                        st.session_state['generated_candidates'] = filtered_candidates
+                        # final_selected_insights는 초기화하지 않음 (유지)
 
                 # [수정] 인사이트 선택 UI 개선
                 if st.session_state['generated_candidates']:
@@ -1207,6 +1208,7 @@ if addr_input:
                         with col_txt:
                             st.markdown(f"<div class='insight-item'>{selected}</div>", unsafe_allow_html=True)
                         with col_del:
+                            # [수정] 삭제 버튼 작게
                             if st.button("❌", key=f"del_{i}"):
                                 st.session_state['final_selected_insights'].pop(i)
                                 st.rerun()
