@@ -41,19 +41,20 @@ st.markdown("""
         
         input[type="text"] { 
             text-align: right !important; 
-            font-size: 24px !important; 
-            font-weight: 800 !important;
+            font-size: 18px !important; 
+            font-weight: 600 !important;
             font-family: 'Pretendard', sans-serif;
             color: #333 !important;
             padding-right: 10px !important;
         }
 
+        /* 주소 입력칸은 왼쪽 정렬 */
         div[data-testid="stTextInput"] input[aria-label="주소 입력"] {
             text-align: left !important;
             font-size: 18px !important;
-            font-weight: 600 !important;
         }
         
+        /* 공시지가/용도지역 등 특정 입력칸 스타일 */
         div[data-testid="stTextInput"] input[aria-label="공시지가"] {
             text-align: center !important;
             font-size: 20px !important;
@@ -202,6 +203,23 @@ def render_styled_block(label, value, is_area=False):
     </div>
     """, unsafe_allow_html=True)
 
+# [수정] 수기 작성 가능한 면적 입력 함수 (빨간색 평수 자동 산출)
+def editable_area_input(label, key, default_val):
+    val_str = st.text_input(label, value=str(default_val), key=key)
+    try:
+        val_float = float(str(val_str).replace(',', ''))
+        pyeong = val_float * 0.3025
+        # 빨간색 평수 표시
+        st.markdown(f"<div style='color: #D32F2F; font-size: 14px; font-weight: bold; margin-top: -5px; text-align: right;'>{pyeong:,.1f} 평</div>", unsafe_allow_html=True)
+        return val_float
+    except:
+        st.markdown(f"<div style='color: #D32F2F; font-size: 14px; font-weight: bold; margin-top: -5px; text-align: right;'>- 평</div>", unsafe_allow_html=True)
+        return 0.0
+
+# [수정] 수기 작성 가능한 일반 텍스트 입력 함수
+def editable_text_input(label, key, default_val):
+    return st.text_input(label, value=str(default_val), key=key)
+
 def comma_input(label, unit, key, default_val, help_text=""):
     st.markdown(f"""
         <div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>
@@ -243,11 +261,10 @@ def format_area_ppt(val_str):
         return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
-# --- [AI 인사이트 생성 (30자 핵심 요약)] ---
+# --- [AI 인사이트 생성] ---
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
-    # [마케팅 DB: 약 30자 내외 핵심 요약]
     marketing_db = {
         "역세권": [
             "■ [초역세권] 풍부한 유동인구와 직장인 수요 독점하는 핵심 입지",
@@ -348,7 +365,7 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
     
     # 1. 사용자 코멘트
     if user_comment:
-        points.append(f"📌 {user_comment.strip()[:35]}") # 길이 제한
+        points.append(f"📌 {user_comment.strip()[:35]}") 
 
     # 2. 키워드 기반 (랜덤)
     if env_features:
@@ -511,16 +528,8 @@ def parse_xml_response(content):
             "strctCdNm": item.findtext('strctCdNm', '정보없음'),
             "platArea": float(item.findtext('platArea', '0') or 0),
             "totArea": float(item.findtext('totArea', '0') or 0),
-            "platArea_html": format_area_html(item.findtext('platArea', '0')),
-            "totArea_html": format_area_html(item.findtext('totArea', '0')),
-            "archArea_html": format_area_html(item.findtext('archArea', '0')),
-            "groundArea_html": format_area_html(item.findtext('vlRatEstmTotArea', '0')),
-            "platArea_ppt": format_area_ppt(item.findtext('platArea', '0')),
-            "totArea_ppt": format_area_ppt(item.findtext('totArea', '0')),
-            "archArea_ppt": format_area_ppt(item.findtext('archArea', '0')),
             "archArea_val": float(item.findtext('archArea', '0') or 0),
             "groundArea": float(item.findtext('vlRatEstmTotArea', '0') or 0),
-            "groundArea_ppt": format_area_ppt(item.findtext('vlRatEstmTotArea', '0')),
             "ugrndFlrCnt": item.findtext('ugrndFlrCnt', '0'),
             "grndFlrCnt": item.findtext('grndFlrCnt', '0'),
             "useAprDay": format_date_dot(item.findtext('useAprDay', '')),
@@ -562,38 +571,31 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
         bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
         
-    # [수정 1] 공시지가: 웹 계산 후 "만원/평" 표기
     lp_py_val = (land_price / 10000) / 0.3025 if land_price > 0 else 0
     lp_str_final = f"{lp_py_val:,.0f}만원/평"
     
-    # [수정 2] 공시지가 총액: 소수점 제외, 앞에 "합 " 붙이기
     total_lp_val = land_price * info['platArea'] if land_price and info['platArea'] else 0
     total_lp_num = int(total_lp_val / 100000000) if total_lp_val > 0 else 0
     total_lp_str_final = f"합 {total_lp_num:,}억" if total_lp_num > 0 else "-"
 
-    # [수정] 투자포인트 리스트를 텍스트로 합치기
     ai_points_str = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
 
+    # info['platArea'] 등은 이제 사용자가 입력한 값(float)을 그대로 사용
     plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
     plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "-"
     tot_m2 = f"{info['totArea']:,}" if info['totArea'] else "-"
     tot_py = f"{info['totArea'] * 0.3025:,.1f}" if info['totArea'] else "-"
     
     arch_val = info.get('archArea_val', 0)
-    if arch_val == 0 and info['platArea'] > 0 and info['bcRat'] > 0:
-        arch_val = info['platArea'] * (info['bcRat'] / 100)
     arch_m2 = f"{arch_val:,.1f}"
     arch_py = f"{arch_val * 0.3025:,.1f}"
     
     ground_val = info.get('groundArea', 0)
-    if ground_val == 0 and info['totArea'] > 0:
-            ground_val = info['totArea']
     ground_m2 = f"{ground_val:,}"
     ground_py = f"{ground_val * 0.3025:,.1f}"
     
     use_date = info.get('useAprDay', '-')
 
-    # [수정 3] 매매평단가 앞에 "평 " 붙이기
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
@@ -605,7 +607,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         'use_date': use_date
     }
 
-    # 1. 템플릿이 있는 경우
     if template_binary:
         prs = Presentation(template_binary)
         
@@ -619,13 +620,13 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
             "{{용도지역}}": zoning,
-            "{{AI물건분석내용 4가지 }}": ai_points_str, # [수정] 슬라이드 3 투자포인트
+            "{{AI물건분석내용 4가지 }}": ai_points_str,
             "{{공시지가}}": lp_str_final,
             "{{공시지가 총액}}": total_lp_str_final,
             "{{준공년도}}": use_date,
-            "{{건물규모}}": f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F",
-            "{{건폐율}}": f"{info.get('bcRat', 0)}%",
-            "{{용적률}}": f"{info.get('vlRat', 0)}%",
+            "{{건물규모}}": info.get('scale_str', '-'), # 수기입력된 값 사용
+            "{{건폐율}}": info.get('bcRat_str', '-'),   # 수기입력된 값 사용
+            "{{용적률}}": info.get('vlRat_str', '-'),   # 수기입력된 값 사용(사실상 PPT 템플릿엔 건폐/용적 통합키로 전달해야할수도 있지만 여기선 개별키가 없으므로 텍스트 치환 로직에서 처리)
             "{{승강기}}": info.get('rideUseElvtCnt', '-'),
             "{{주차대수}}": info.get('parking', '-'),
             "{{건물주구조}}": info.get('strctCdNm', '-'),
@@ -648,7 +649,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # [수정] AI 물건분석내용 4가지 (슬라이드 3 투자포인트): 글자크기 10pt 강제
                 if "{{AI물건분석내용 4가지 }}" in p_text:
                     p.text = str(mapper["{{AI물건분석내용 4가지 }}"])
                     for r in p.runs:
@@ -656,17 +656,19 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         r.font.name = "맑은 고딕"
                     return
 
-                # [수정 1] 공시지가: 검정, 굵게, 10pt
                 if "{{공시지가}}" in p_text:
                     p.text = str(mapper["{{공시지가}}"])
                     for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(10)
                     return
-                # [수정 2] 공시지가 총액: 빨강, 굵게, 12pt
                 if "{{공시지가 총액}}" in p_text:
                     p.text = str(mapper["{{공시지가 총액}}"])
                     for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
                     return
 
+                # 건폐율/용적률 처리 (수기 입력값이 '50% / 200%' 형태일 수 있음)
+                # 템플릿에 {{건폐율}}, {{용적률}} 키워드가 따로 있다면 각각 매핑, 합쳐져 있다면 하나로 처리해야 함.
+                # 위 data_map에서 이미 값은 준비됨.
+                
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -827,8 +829,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         data = [
             ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", f"{lp_py:,.0f}만/평"],
             ["대지", info['platArea_ppt'], "도로", "M"], ["연면적", info['totArea_ppt'], "준공", info['useAprDay']],
-            ["지상", info['totArea_ppt'], "규모", f"B{info.get('ugrndFlrCnt')}/{info.get('grndFlrCnt')}F"], ["건축", info['archArea_ppt'], "승강기", info['rideUseElvtCnt']],
-            ["건/용", f"{info.get('bcRat')}%/{info.get('vlRat')}%", "주차", info['parking'].split('(')[0]], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
+            ["지상", info['totArea_ppt'], "규모", info.get('scale_str', '-')], ["건축", info['archArea_ppt'], "승강기", info['rideUseElvtCnt']],
+            ["건/용", info.get('bc_vl_str', '-'), "주차", info['parking'].split('(')[0]], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
             ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
             ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
         ]
@@ -883,12 +885,14 @@ def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling
 
     worksheet.write('G5', '건물개요', fmt_header)
     lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
-    bcvl_text = f"{info['bcRat']:.2f}%\n{info['vlRat']:.2f}%"
+    # 엑셀에도 수기 입력값 반영
+    bcvl_text = info.get('bc_vl_str', '-')
+    scale_text = info.get('scale_str', '-')
     
     table_data_xls = [
         ["소재지", full_addr, "용도", zoning], ["공시지가", f"{lp_py:,.0f}만/평", "대지", info['platArea_ppt']], 
         ["도로", "6M", "연면적", info['totArea_ppt']], ["준공", info['useAprDay'], "지상", info['totArea_ppt']],
-        ["규모", f"B{info['ugrndFlrCnt']}/{info['grndFlrCnt']}F", "건축", info['archArea_ppt']], ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
+        ["규모", scale_text, "건축", info['archArea_ppt']], ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
         ["주차", info['parking'].split('(')[0], "주용도", info.get('mainPurpsCdNm','-')], ["주구조", info.get('strctCdNm','-'), "보증금", f"{finance['deposit']:,.0f}만"],
         ["융자", f"{finance['loan']:,}억", "임대료", f"{finance['rent']:,}만"], ["수익률", f"{finance['yield']:.1f}%", "관리비", f"{finance['maintenance']:,}만"],
         ["매도가", f"{finance['price']:,}억", "", ""] 
@@ -955,7 +959,7 @@ if addr_input:
             else:
                 st.success("✅ 분석 완료!")
                 
-                # [요청 4] 사진 업로드 박스 4열 배치 (슬라이드 7처럼)
+                # [요청 4] 사진 업로드 박스 4열 배치
                 st.write("##### 📸 PPT 삽입용 사진 업로드")
                 
                 st.write("▼ 기본 사진 (위치도/메인/지적도/대장)")
@@ -976,11 +980,14 @@ if addr_input:
 
                 st.markdown("---")
                 st.markdown("""<div style="background-color: #f8f9fa; padding: 50px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">""", unsafe_allow_html=True)
+                
+                # 기본 정보
                 c1, c2 = st.columns([2, 1])
                 with c1: render_styled_block("소재지", addr_input)
-                with c2: render_styled_block("건물명", info.get('bldNm'))
+                with c2: info['bldNm'] = editable_text_input("건물명", "bldNm", info.get('bldNm', '-'))
                 st.write("") 
                 
+                # 공시지가 및 용도지역 (기존 유지)
                 c_lp1, c_lp2, c_lp3 = st.columns(3)
                 with c_lp1:
                     lp_val = st.text_input("공시지가(원/㎡)", value=f"{st.session_state['fetched_lp']:,}")
@@ -993,26 +1000,58 @@ if addr_input:
                 st.write("")
                 st.markdown("<hr style='margin: 10px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
+                # [수정] 수기 작성 가능 + 빨간 평수 자동 계산
                 c2_1, c2_2, c2_3 = st.columns(3)
                 with c2_1:
                     zoning_val = st.text_input("용도지역", value=st.session_state['fetched_zoning'])
                     st.session_state['zoning'] = zoning_val
-                with c2_2: render_styled_block("대지면적", info['platArea_html'], is_area=True)
-                with c2_3: render_styled_block("연면적", info['totArea_html'], is_area=True)
+                with c2_2: 
+                    # 대지면적
+                    new_plat = editable_area_input("대지면적", "plat", info['platArea'])
+                    info['platArea'] = new_plat # 데이터 업데이트
+                with c2_3: 
+                    # 연면적
+                    new_tot = editable_area_input("연면적", "tot", info['totArea'])
+                    info['totArea'] = new_tot
+                
                 st.write("")
                 c3_1, c3_2, c3_3 = st.columns(3)
-                with c3_1: render_styled_block("준공년도", info['useAprDay'])
-                with c3_2: render_styled_block("건축면적", info['archArea_html'], is_area=True)
-                with c3_3: render_styled_block("지상면적", info['groundArea_html'], is_area=True)
+                with c3_1: 
+                    # 준공년도
+                    info['useAprDay'] = editable_text_input("준공년도", "useDay", info['useAprDay'])
+                with c3_2: 
+                    # 건축면적
+                    new_arch = editable_area_input("건축면적", "arch", info.get('archArea_val', 0))
+                    info['archArea_val'] = new_arch
+                with c3_3: 
+                    # 지상면적
+                    new_ground = editable_area_input("지상면적", "ground", info.get('groundArea', 0))
+                    info['groundArea'] = new_ground
+                
                 st.write("")
                 c4_1, c4_2, c4_3 = st.columns(3)
-                with c4_1: render_styled_block("건물규모", f"B{info['ugrndFlrCnt']} / {info['grndFlrCnt']}F")
-                with c4_2: render_styled_block("승강기/주차", f"{info.get('rideUseElvtCnt')} / {info.get('parking')}")
-                with c4_3: render_styled_block("건폐/용적", f"{info.get('bcRat')}% / {info.get('vlRat')}%")
+                with c4_1: 
+                    # 건물규모
+                    def_scale = f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F"
+                    info['scale_str'] = editable_text_input("건물규모", "scale", def_scale)
+                with c4_2: 
+                    # 승강기/주차
+                    def_ev_pk = f"{info.get('rideUseElvtCnt')} / {info.get('parking')}"
+                    info['rideUseElvtCnt'] = editable_text_input("승강기/주차", "ev_pk", def_ev_pk) # 합쳐서 저장
+                    info['parking'] = info['rideUseElvtCnt'] # 엑셀 호환을 위해 일단 매핑
+                with c4_3: 
+                    # 건폐/용적
+                    def_bc_vl = f"{info.get('bcRat')}% / {info.get('vlRat')}%"
+                    info['bc_vl_str'] = editable_text_input("건폐/용적", "bc_vl", def_bc_vl)
+                
                 st.write("")
                 c5_1, c5_2, c5_3 = st.columns(3)
-                with c5_1: render_styled_block("건물용도", info.get('mainPurpsCdNm'))
-                with c5_2: render_styled_block("건물주구조", info.get('strctCdNm'))
+                with c5_1: 
+                    # 건물용도
+                    info['mainPurpsCdNm'] = editable_text_input("건물용도", "purps", info.get('mainPurpsCdNm'))
+                with c5_2: 
+                    # 건물주구조
+                    info['strctCdNm'] = editable_text_input("건물주구조", "strct", info.get('strctCdNm'))
                 with c5_3: st.empty()
                 st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("---")
@@ -1046,6 +1085,7 @@ if addr_input:
                     st.markdown(f"""<div style='font-size: 16px; font-weight: 700; color: #1e88e5; margin-bottom: 4px;'>수익률</div><div style='background-color: #fff; border: 1px solid #ddd; border-radius: 5px; padding: 10px; text-align: center;'><span style='font-size: 28px; font-weight: 900; color: #111;'>{yield_rate:.2f}</span><span style='font-size: 18px; font-weight: 600; color: #555;'>%</span></div>""", unsafe_allow_html=True)
                 st.markdown("<hr style='margin: 15px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
+                # 수기 입력된 면적으로 평당가 계산
                 land_py = info['platArea'] * 0.3025; tot_py = info['totArea'] * 0.3025; price_won = price_val * 100000000
                 land_price_per_py = (price_won / land_py) / 10000 if land_py > 0 else 0
                 tot_price_per_py = (price_won / tot_py) / 10000 if tot_py > 0 else 0
