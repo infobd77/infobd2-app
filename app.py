@@ -177,7 +177,7 @@ USER_KEY = "Xl5W1ALUkfEhomDR8CBUoqBMRXphLTIB7CuTto0mjsg0CQQspd7oUEmAwmw724YtkjnV
 VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
-# [수정] 리스트 관리 (후보군/선택됨 분리)
+# [리스트 관리] 후보군/선택됨 분리
 if 'generated_candidates' not in st.session_state: st.session_state['generated_candidates'] = [] 
 if 'final_selected_insights' not in st.session_state: st.session_state['final_selected_insights'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
@@ -611,7 +611,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
-    # [중요] NameError 방지용 ctx_vals 정의 (함수 시작 부분)
+    # 2. Context Dictionary 정의
     ctx_vals = {
         'plat_m2': plat_m2, 'plat_py': plat_py,
         'tot_m2': tot_m2, 'tot_py': tot_py,
@@ -620,53 +620,54 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         'use_date': use_date
     }
 
+    # 3. Data Map 정의 (건폐율 등 수기입력값 매핑)
+    # [수정] 건폐/용적, 승강기/주차 매핑 정확하게
+    data_map = {
+        "{{빌딩이름}}": bld_name,
+        "{{소재지}}": full_addr,
+        "{{용도지역}}": zoning,
+        "{{AI물건분석내용 4가지 }}": ai_points_str,
+        "{{공시지가}}": lp_str_final,
+        "{{공시지가 총액}}": total_lp_str_final,
+        "{{교통편의}}": info.get('traffic', '-'), 
+        "{{도로상황}}": info.get('road', '-'),    
+        "{{준공년도}}": use_date,
+        "{{건물규모}}": info.get('scale_str', '-'),
+        "{{건폐율}}": info.get('bc_vl_str', '-'), # 수기입력값 (50% / 200%)
+        "{{용적률}}": "",                         # 통합입력 했으므로 비움
+        "{{승강기}}": info.get('rideUseElvtCnt', '-'), # 수기입력값 (Ev / Parking)
+        "{{주차대수}}": "",                            # 통합입력 했으므로 비움
+        "{{건물주구조}}": info.get('strctCdNm', '-'),
+        "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
+        "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
+        "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
+        "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
+        "{{수익률}}": f"년 {finance['yield']:.1f}%" if finance['yield'] else "-",
+        "{{융자금}}": f"{finance['loan']:,} 억원" if finance['loan'] else "-",
+        "{{매매금액}}": f"{finance['price']:,} 억원" if finance['price'] else "-",
+        "{{대지평단가}}": market_price_str,
+        "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
+        "{{위치도}}": "", 
+        "{{지적도}}": "",
+        "{{건축물대장}}": "",
+        "{{건물사진}}": ""
+    }
+    
+    # 4. 템플릿 처리 로직
     if template_binary:
         prs = Presentation(template_binary)
         
-        data_map = {
-            "{{빌딩이름}}": bld_name,
-            "{{소재지}}": full_addr,
-            "{{용도지역}}": zoning,
-            "{{AI물건분석내용 4가지 }}": ai_points_str,
-            "{{공시지가}}": lp_str_final,
-            "{{공시지가 총액}}": total_lp_str_final,
-            "{{교통편의}}": info.get('traffic', '-'), 
-            "{{도로상황}}": info.get('road', '-'),    
-            "{{준공년도}}": use_date,
-            "{{건물규모}}": info.get('scale_str', '-'),
-            "{{건폐율}}": info.get('bc_vl_str', '-'),  
-            "{{용적률}}": "",                          
-            "{{승강기}}": info.get('rideUseElvtCnt', '-'), 
-            "{{주차대수}}": "",                            
-            "{{건물주구조}}": info.get('strctCdNm', '-'),
-            "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
-            "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
-            "{{월임대료}}": f"{finance['rent']:,} 만원" if finance['rent'] else "-",
-            "{{관리비}}": f"{finance['maintenance']:,} 만원" if finance['maintenance'] else "-",
-            "{{수익률}}": f"년 {finance['yield']:.1f}%" if finance['yield'] else "-",
-            "{{융자금}}": f"{finance['loan']:,} 억원" if finance['loan'] else "-",
-            "{{매매금액}}": f"{finance['price']:,} 억원" if finance['price'] else "-",
-            "{{대지평단가}}": market_price_str,
-            "{{건물미래가치 활용도}}": "사옥 및 수익용 리모델링 추천",
-            "{{위치도}}": "", 
-            "{{지적도}}": "",
-            "{{건축물대장}}": "",
-            "{{건물사진}}": ""
-        }
-        
-        if 'bc_vl_str' in info:
-             data_map["{{건폐율}}"] = info['bc_vl_str']
-             data_map["{{용적률}}"] = "" 
-
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
+                # AI분석 내용
                 if "{{AI물건분석내용 4가지 }}" in p_text:
                     p.text = str(mapper["{{AI물건분석내용 4가지 }}"])
                     for r in p.runs: r.font.size = Pt(10); r.font.name = "맑은 고딕"
                     return
 
+                # 공시지가 관련
                 if "{{공시지가}}" in p_text:
                     p.text = str(mapper["{{공시지가}}"])
                     for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(10)
@@ -676,6 +677,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
                     return
 
+                # 금융정보
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -693,6 +695,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         for r in p.runs: r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = black
                     return 
 
+                # 매매금액
                 if "{{매매금액}}" in p_text:
                     val_str = str(mapper["{{매매금액}}"])
                     if " " in val_str:
@@ -705,6 +708,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                         for r in p.runs: r.font.size = Pt(16); r.font.bold = True; r.font.color.rgb = deep_blue
                     continue
 
+                # 면적 관련
                 if "{{대지면적}}" in p_text:
                     if "평" in p_text:
                         p.text = p_text.replace("{{대지면적}}", ctx['plat_py'])
@@ -798,7 +802,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결
+    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결 및 데이터 매핑
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -833,7 +837,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         table = slide.shapes.add_table(12, 4, Cm(10.8), Cm(3.5), Cm(9.2), Cm(12.5)).table 
         table.columns[0].width = Cm(2.3); table.columns[1].width = Cm(2.3); table.columns[2].width = Cm(2.3); table.columns[3].width = Cm(2.3)
 
-        # [수정] 수기입력 값 기반 데이터 구성
+        # [수정] 수기입력 값 기반 데이터 구성 (건폐/용적률, 승강기/주차 매핑)
         data = [
             ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", lp_str_final],
             ["대지", f"{info['platArea']:.2f}㎡", "도로", "M"], ["연면적", f"{info['totArea']:.2f}㎡", "준공", use_date],
@@ -1199,20 +1203,19 @@ if addr_input:
                             st.session_state['generated_candidates'].remove(cand) # 후보군에서 제거
                             st.rerun()
 
-                # [수정] 최종 선택된 목록 보여주기 (삭제 기능 포함)
+                # [수정] 최종 선택된 목록 보여주기 (삭제 버튼 대신 체크박스 해제 방식)
                 if st.session_state['final_selected_insights']:
                     st.markdown("""<div class="ai-summary-box"><div class="ai-title">🌟 투자포인트 내용 (최종 선택됨)</div>""", unsafe_allow_html=True)
+                    st.write("※ 체크를 해제하면 목록에서 삭제됩니다.")
                     
-                    # 삭제 로직을 위해 리스트 복사본 사용
+                    # 리스트 순회하며 체크박스 생성 (기본값 True)
+                    # 해제 시 리스트에서 제거하고 리런
                     for i, selected in enumerate(st.session_state['final_selected_insights']):
-                        col_txt, col_del = st.columns([0.95, 0.05]) # [수정] 버튼 영역 최소화
-                        with col_txt:
-                            st.markdown(f"<div class='insight-item'>{selected}</div>", unsafe_allow_html=True)
-                        with col_del:
-                            # [수정] 삭제 버튼 작게 (컨테이너 너비 사용 안함)
-                            if st.button("❌", key=f"del_{i}"):
-                                st.session_state['final_selected_insights'].pop(i)
-                                st.rerun()
+                        # 체크박스 상태 확인
+                        is_checked = st.checkbox(selected, value=True, key=f"sel_{i}")
+                        if not is_checked:
+                            st.session_state['final_selected_insights'].pop(i)
+                            st.rerun()
                                 
                     st.markdown("</div>", unsafe_allow_html=True)
 
