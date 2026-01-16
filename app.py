@@ -274,6 +274,7 @@ def format_area_ppt(val_str):
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
+    # [수정] 모든 문구 앞에 ☑ 박스 고정
     marketing_db = {
         "역세권": [
             "☑ [초역세권] 풍부한 유동인구와 직장인 수요 독점하는 핵심 입지",
@@ -568,9 +569,9 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수 - 오류수정완료: 변수정의 위치 변경]
+# [PPT 생성 함수]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
-    # 1. 공통 변수 정의 (최상단) -> Scope Error 방지
+    # 1. 변수 정의 및 계산 (최상단) -> NameError 방지
     deep_blue = RGBColor(0, 51, 153) 
     deep_red = RGBColor(204, 0, 0)   
     black = RGBColor(0, 0, 0)
@@ -610,7 +611,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
-    # Context Dictionary 정의 (템플릿 안쓸때도 필요하면 사용)
+    # [중요] NameError 방지용 ctx_vals 정의 (함수 시작 부분)
     ctx_vals = {
         'plat_m2': plat_m2, 'plat_py': plat_py,
         'tot_m2': tot_m2, 'tot_py': tot_py,
@@ -797,7 +798,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결 및 Scope 문제 해결
+    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1204,11 +1205,11 @@ if addr_input:
                     
                     # 삭제 로직을 위해 리스트 복사본 사용
                     for i, selected in enumerate(st.session_state['final_selected_insights']):
-                        col_txt, col_del = st.columns([0.9, 0.1])
+                        col_txt, col_del = st.columns([0.95, 0.05]) # [수정] 버튼 영역 최소화
                         with col_txt:
                             st.markdown(f"<div class='insight-item'>{selected}</div>", unsafe_allow_html=True)
                         with col_del:
-                            # [수정] 삭제 버튼 작게
+                            # [수정] 삭제 버튼 작게 (컨테이너 너비 사용 안함)
                             if st.button("❌", key=f"del_{i}"):
                                 st.session_state['final_selected_insights'].pop(i)
                                 st.rerun()
