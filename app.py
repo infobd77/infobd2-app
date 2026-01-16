@@ -165,8 +165,8 @@ USER_KEY = "Xl5W1ALUkfEhomDR8CBUoqBMRXphLTIB7CuTto0mjsg0CQQspd7oUEmAwmw724YtkjnV
 VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
-if 'generated_insights' not in st.session_state: st.session_state['generated_insights'] = [] # 생성된 후보군
-if 'final_selected_insights' not in st.session_state: st.session_state['final_selected_insights'] = [] # 사용자가 최종 선택한 것
+if 'generated_insights' not in st.session_state: st.session_state['generated_insights'] = [] 
+if 'final_selected_insights' not in st.session_state: st.session_state['final_selected_insights'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
 if 'addr' not in st.session_state: st.session_state['addr'] = "" 
 if 'last_click_lat' not in st.session_state: st.session_state['last_click_lat'] = 0.0
@@ -243,11 +243,10 @@ def format_area_ppt(val_str):
         return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
-# --- [AI 인사이트 생성 (전문가/마케팅)] ---
+# --- [AI 인사이트 생성] ---
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
-    # [마케팅 DB: 이모티콘 제거, 전문 용어 사용]
     marketing_db = {
         "역세권": [
             "■ [초역세권 입지] 지하철역 도보권 내 위치하여 풍부한 유동인구와 직장인 출퇴근 수요를 독점하는 핵심 입지",
@@ -352,14 +351,12 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
 
     # 2. 키워드 기반 (랜덤)
     if env_features:
-        # 키워드별로 하나씩 다 가져와서 풍부하게 만듦
         random.shuffle(env_features)
         for feat in env_features:
             if feat in marketing_db:
-                # 해당 키워드의 문구 중 하나 랜덤 선택
                 points.append(random.choice(marketing_db[feat]))
 
-    # 3. 가격 경쟁력 (전문 용어 사용)
+    # 3. 가격 경쟁력
     if comp_df is not None and not comp_df.empty:
         try:
             sold_df = comp_df[comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
@@ -383,7 +380,7 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
                     points.append(random.choice(msgs))
         except: pass
 
-    # 4. 수익률 (Cash Flow 강조)
+    # 4. 수익률
     yield_val = finance['yield']
     if yield_val >= 4.0:
         msgs = [
@@ -415,7 +412,6 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
     for msg in fallback_msgs:
         points.append(msg)
         
-    # 중복 제거 및 리스트 반환
     return list(dict.fromkeys(points))
 
 # --- [API 조회 함수들] ---
@@ -565,15 +561,16 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         dong = full_addr.split(' ')[2] if len(full_addr.split(' ')) > 2 else ""
         bld_name = f"{dong} 빌딩" if dong else "사옥용 빌딩"
         
-    # [요청 1] 공시지가: 웹 계산 후 "만원/평" 표기
+    # [수정 1] 공시지가: 웹 계산 후 "만원/평" 표기
     lp_py_val = (land_price / 10000) / 0.3025 if land_price > 0 else 0
     lp_str_final = f"{lp_py_val:,.0f}만원/평"
     
-    # [요청 2] 공시지가 총액: 소수점 제외, 앞에 "합 " 붙이기
+    # [수정 2] 공시지가 총액: 소수점 제외, 앞에 "합 " 붙이기
     total_lp_val = land_price * info['platArea'] if land_price and info['platArea'] else 0
     total_lp_num = int(total_lp_val / 100000000) if total_lp_val > 0 else 0
     total_lp_str_final = f"합 {total_lp_num:,}억" if total_lp_num > 0 else "-"
 
+    # [수정] 투자포인트 리스트를 텍스트로 합치기
     ai_points_str = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
 
     plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
@@ -595,7 +592,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     
     use_date = info.get('useAprDay', '-')
 
-    # [요청 3] 매매평단가 앞에 "평 " 붙이기
+    # [수정 3] 매매평단가 앞에 "평 " 붙이기
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
@@ -621,7 +618,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{빌딩이름}}": bld_name,
             "{{소재지}}": full_addr,
             "{{용도지역}}": zoning,
-            "{{AI물건분석내용 4가지 }}": ai_points_str,
+            "{{AI물건분석내용 4가지 }}": ai_points_str, # [수정] 슬라이드 3에 해당 키워드가 있다면 여기에 할당됨
             "{{공시지가}}": lp_str_final,
             "{{공시지가 총액}}": total_lp_str_final,
             "{{준공년도}}": use_date,
@@ -650,12 +647,12 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             for p in text_frame.paragraphs:
                 p_text = p.text
                 
-                # [요청 1] 공시지가: 검정, 굵게
+                # [수정 1] 공시지가: 검정, 굵게, 10pt
                 if "{{공시지가}}" in p_text:
                     p.text = str(mapper["{{공시지가}}"])
-                    for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(12)
+                    for r in p.runs: r.font.color.rgb = black; r.font.bold = True; r.font.size = Pt(10)
                     return
-                # [요청 2] 공시지가 총액: 빨강, 굵게
+                # [수정 2] 공시지가 총액: 빨강, 굵게, 12pt (또는 10pt)
                 if "{{공시지가 총액}}" in p_text:
                     p.text = str(mapper["{{공시지가 총액}}"])
                     for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
