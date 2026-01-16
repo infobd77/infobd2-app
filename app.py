@@ -177,7 +177,7 @@ USER_KEY = "Xl5W1ALUkfEhomDR8CBUoqBMRXphLTIB7CuTto0mjsg0CQQspd7oUEmAwmw724YtkjnV
 VWORLD_KEY = "47B30ADD-AECB-38F3-B5B4-DD92CCA756C5"
 
 if 'zoning' not in st.session_state: st.session_state['zoning'] = ""
-# [리스트 관리] 후보군/선택됨 분리
+# [수정] 리스트 관리 (후보군/선택됨 분리)
 if 'generated_candidates' not in st.session_state: st.session_state['generated_candidates'] = [] 
 if 'final_selected_insights' not in st.session_state: st.session_state['final_selected_insights'] = [] 
 if 'price' not in st.session_state: st.session_state['price'] = 0
@@ -274,7 +274,6 @@ def format_area_ppt(val_str):
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
     
-    # [수정] 모든 문구 앞에 ☑ 박스 고정
     marketing_db = {
         "역세권": [
             "☑ [초역세권] 풍부한 유동인구와 직장인 수요 독점하는 핵심 입지",
@@ -620,8 +619,8 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         'use_date': use_date
     }
 
-    # 3. Data Map 정의 (건폐율 등 수기입력값 매핑)
-    # [수정] 건폐/용적, 승강기/주차 매핑 정확하게
+    # 3. Data Map 정의 
+    # [수정] 건폐/용적, 승강기/주차 매핑 정확하게 처리
     data_map = {
         "{{빌딩이름}}": bld_name,
         "{{소재지}}": full_addr,
@@ -633,10 +632,10 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         "{{도로상황}}": info.get('road', '-'),    
         "{{준공년도}}": use_date,
         "{{건물규모}}": info.get('scale_str', '-'),
-        "{{건폐율}}": info.get('bc_vl_str', '-'), # 수기입력값 (50% / 200%)
-        "{{용적률}}": "",                         # 통합입력 했으므로 비움
-        "{{승강기}}": info.get('rideUseElvtCnt', '-'), # 수기입력값 (Ev / Parking)
-        "{{주차대수}}": "",                            # 통합입력 했으므로 비움
+        "{{건폐율}}": info.get('bcRat_str', '-'), # 수기입력 값
+        "{{용적률}}": info.get('vlRat_str', '-'), # 수기입력 값
+        "{{승강기}}": info.get('rideUseElvtCnt', '-'), 
+        "{{주차대수}}": info.get('parking', '-'),                            
         "{{건물주구조}}": info.get('strctCdNm', '-'),
         "{{건물용도}}": info.get('mainPurpsCdNm', '-'),
         "{{보증금}}": f"{finance['deposit']:,} 만원" if finance['deposit'] else "-",
@@ -802,7 +801,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결 및 데이터 매핑
+    # 5. 템플릿 없는 경우 (기본 PPT) - [수정] KeyError 해결
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -842,10 +841,30 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", lp_str_final],
             ["대지", f"{info['platArea']:.2f}㎡", "도로", "M"], ["연면적", f"{info['totArea']:.2f}㎡", "준공", use_date],
             ["지상", f"{info['totArea']:.2f}㎡", "규모", info.get('scale_str', '-')], ["건축", f"{info.get('archArea_val',0):.2f}㎡", "승강기", info.get('rideUseElvtCnt','-')],
-            ["건/용", info.get('bc_vl_str', '-'), "주차", "-"], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
-            ["교통", info.get('traffic', '-'), "도로상황", info.get('road', '-')], 
-            ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
+            ["건폐율", info.get('bcRat_str', '-'), "용적률", info.get('vlRat_str', '-')], # 분리
+            ["주차", info.get('parking', '-'), "주용도", info.get('mainPurpsCdNm','-')],
+            ["주구조", info.get('strctCdNm','-'), "교통", info.get('traffic', '-')], 
+            ["도로상황", info.get('road', '-'), "", ""],
+            ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], 
+            ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
             ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
+        ]
+
+        # 기본 PPT 표가 조금 깨질 수 있으니 행/열 맞춰서 재조정 필요 (간단히 12행 유지하며 데이터 채움)
+        # 위 data 리스트를 12행 4열로 맞춤
+        data = [
+             ["소재지", full_addr, "용도", zoning],
+             ["대지", f"{info['platArea']:.2f}㎡", "공시지가", lp_str_final],
+             ["연면적", f"{info['totArea']:.2f}㎡", "준공", use_date],
+             ["지상", f"{info['totArea']:.2f}㎡", "규모", info.get('scale_str', '-')],
+             ["건축", f"{info.get('archArea_val',0):.2f}㎡", "승강기", info.get('rideUseElvtCnt','-')],
+             ["건폐율", info.get('bcRat_str', '-'), "용적률", info.get('vlRat_str', '-')],
+             ["주차", info.get('parking', '-'), "주용도", info.get('mainPurpsCdNm','-')],
+             ["주구조", info.get('strctCdNm','-'), "교통", info.get('traffic', '-')],
+             ["도로", info.get('road', '-'), "", ""],
+             ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"],
+             ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
+             ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
         ]
 
         for r in range(12):
@@ -899,7 +918,9 @@ def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling
 
     worksheet.write('G5', '건물개요', fmt_header)
     lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
-    bcvl_text = info.get('bc_vl_str', '-')
+    # [수정] 분리된 변수 사용
+    bc_text = info.get('bcRat_str', '-')
+    vl_text = info.get('vlRat_str', '-')
     scale_text = info.get('scale_str', '-')
     
     # 엑셀 데이터도 수기입력 값 기반으로 생성 (KeyError 방지)
@@ -910,10 +931,10 @@ def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling
     table_data_xls = [
         ["소재지", full_addr, "용도", zoning], ["공시지가", f"{lp_py:,.0f}만/평", "대지", plat_str], 
         ["도로", "6M", "연면적", tot_str], ["준공", info['useAprDay'], "지상", tot_str],
-        ["규모", scale_text, "건축", arch_str], ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
-        ["주차", info.get('parking','-'), "주용도", info.get('mainPurpsCdNm','-')], ["주구조", info.get('strctCdNm','-'), "보증금", f"{finance['deposit']:,.0f}만"],
-        ["융자", f"{finance['loan']:,}억", "임대료", f"{finance['rent']:,}만"], ["수익률", f"{finance['yield']:.1f}%", "관리비", f"{finance['maintenance']:,}만"],
-        ["매도가", f"{finance['price']:,}억", "", ""] 
+        ["규모", scale_text, "건축", arch_str], ["승강기", info.get('rideUseElvtCnt','-'), "건폐율", bc_text],
+        ["주차", info.get('parking','-'), "용적률", vl_text], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
+        ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
+        ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"], ["", "", "", ""]
     ]
     for i, row in enumerate(table_data_xls):
         worksheet.write(5 + i, 6, row[0], fmt_label) 
@@ -1059,14 +1080,17 @@ if addr_input:
                     def_scale = f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F"
                     info['scale_str'] = editable_text_input("건물규모", "scale", def_scale)
                 with c4_2: 
-                    # 승강기/주차 [수정] 통합
-                    def_ev_pk = f"{info.get('rideUseElvtCnt')} / {info.get('parking')}"
-                    info['rideUseElvtCnt'] = editable_text_input("승강기/주차", "ev_pk", def_ev_pk) 
-                    info['parking'] = info['rideUseElvtCnt'] 
+                    # 승강기/주차 [수정] 분리 입력
+                    c_ev, c_pk = st.columns(2)
+                    info['rideUseElvtCnt'] = c_ev.text_input("승강기", value=str(info.get('rideUseElvtCnt','-')))
+                    info['parking'] = c_pk.text_input("주차대수", value=str(info.get('parking','-')))
                 with c4_3: 
-                    # 건폐/용적 [수정] 통합
-                    def_bc_vl = f"{info.get('bcRat')}% / {info.get('vlRat')}%"
-                    info['bc_vl_str'] = editable_text_input("건폐/용적", "bc_vl", def_bc_vl)
+                    # 건폐/용적 [수정] 분리 입력
+                    c_bc, c_vl = st.columns(2)
+                    info['bcRat_str'] = c_bc.text_input("건폐율", value=f"{info.get('bcRat')}%")
+                    info['vlRat_str'] = c_vl.text_input("용적률", value=f"{info.get('vlRat')}%")
+                    # 통합 문자열도 생성 (엑셀용)
+                    info['bc_vl_str'] = f"{info['bcRat_str']} / {info['vlRat_str']}"
                 
                 st.write("")
                 c5_1, c5_2, c5_3 = st.columns(3)
