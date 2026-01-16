@@ -1,4 +1,4 @@
-\import streamlit as st
+import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -158,7 +158,7 @@ st.markdown("""
             border: 1px solid #bbdefb;
         }
         
-        /* 면적 입력칸 숫자 크게 */
+        /* [추가] 면적 입력칸 숫자 크게 */
         div[data-testid="stTextInput"] input[aria-label="대지면적"],
         div[data-testid="stTextInput"] input[aria-label="연면적"],
         div[data-testid="stTextInput"] input[aria-label="건축면적"],
@@ -194,7 +194,7 @@ def reset_analysis():
 
 # --- [API 및 보조 함수] ---
 def get_address_from_coords(lat, lng):
-    url = "[https://api.vworld.kr/req/address](https://api.vworld.kr/req/address)" 
+    url = "https://api.vworld.kr/req/address" 
     params = {
         "service": "address", "request": "getaddress", "version": "2.0", "crs": "EPSG:4326",
         "point": f"{lng},{lat}", "type": "PARCEL", "format": "json", "errorformat": "json", "key": VWORLD_KEY
@@ -215,11 +215,13 @@ def render_styled_block(label, value, is_area=False):
     </div>
     """, unsafe_allow_html=True)
 
+# [수정] 수기 작성 가능한 면적 입력 함수 (빨간색 평수 크게, 값도 크게)
 def editable_area_input(label, key, default_val):
     val_str = st.text_input(label, value=str(default_val), key=key)
     try:
         val_float = float(str(val_str).replace(',', ''))
         pyeong = val_float * 0.3025
+        # 빨간색 평수 표시 (24px로 확대)
         st.markdown(f"<div style='color: #D32F2F; font-size: 24px; font-weight: 800; margin-top: -5px; text-align: right;'>{pyeong:,.1f} 평</div>", unsafe_allow_html=True)
         return val_float
     except:
@@ -260,6 +262,14 @@ def format_area_html(val_str):
         if val == 0: return "-"
         pyung = val * 0.3025
         return f"{val:,.2f}㎡<br><span style='color: #E53935;'>({pyung:,.1f}평)</span>"
+    except: return "-"
+
+def format_area_ppt(val_str):
+    try:
+        val = float(val_str)
+        if val == 0: return "-"
+        pyung = val * 0.3025
+        return f"{val:,.2f}㎡ ({pyung:,.1f}평)"
     except: return "-"
 
 # --- [AI 인사이트 생성] ---
@@ -432,7 +442,7 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
 # --- [API 조회 함수들] ---
 @st.cache_data(show_spinner=False)
 def get_pnu_and_coords(address):
-    url = "[http://api.vworld.kr/req/search](http://api.vworld.kr/req/search)"
+    url = "http://api.vworld.kr/req/search"
     search_type = 'road' if '로' in address or '길' in address else 'parcel'
     params = {"service": "search", "request": "search", "version": "2.0", "crs": "EPSG:4326", "size": "1", "page": "1", "query": address, "type": "address", "category": search_type, "format": "json", "errorformat": "json", "key": VWORLD_KEY}
     try:
@@ -454,7 +464,7 @@ def get_pnu_and_coords(address):
 
 @st.cache_data(show_spinner=False)
 def get_zoning_smart(lat, lng):
-    url = "[http://api.vworld.kr/req/data](http://api.vworld.kr/req/data)"
+    url = "http://api.vworld.kr/req/data"
     delta = 0.0005
     min_x, min_y = lng - delta, lat - delta
     max_x, max_y = lng + delta, lat + delta
@@ -472,7 +482,7 @@ def get_zoning_smart(lat, lng):
 
 @st.cache_data(show_spinner=False)
 def get_land_price(pnu):
-    url = "[http://apis.data.go.kr/1611000/NsdiIndvdLandPriceService/getIndvdLandPriceAttr](http://apis.data.go.kr/1611000/NsdiIndvdLandPriceService/getIndvdLandPriceAttr)"
+    url = "http://apis.data.go.kr/1611000/NsdiIndvdLandPriceService/getIndvdLandPriceAttr"
     current_year = datetime.datetime.now().year
     years_to_check = range(current_year, current_year - 7, -1) 
     for year in years_to_check:
@@ -490,7 +500,7 @@ def get_land_price(pnu):
 
 @st.cache_data(show_spinner=False)
 def get_building_info_smart(pnu):
-    base_url = "[https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo](https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo)"
+    base_url = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
     sigungu = pnu[0:5]; bjdong = pnu[5:10]; bun = pnu[11:15]; ji = pnu[15:19]
     plat_code = '1' if pnu[10] == '2' else '0'
     params = {"serviceKey": USER_KEY, "sigunguCd": sigungu, "bjdongCd": bjdong, "platGbCd": plat_code, "bun": bun, "ji": ji, "numOfRows": "1", "pageNo": "1"}
@@ -544,7 +554,7 @@ def get_cadastral_map_image(lat, lng):
     maxx, maxy = lng + delta, lat + delta
     bbox = f"{minx},{miny},{maxx},{maxy}"
     layer = "LP_PA_CBND_BUBUN"
-    url = f"[https://api.vworld.kr/req/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=](https://api.vworld.kr/req/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=){layer}&STYLES={layer}&CRS=EPSG:4326&BBOX={bbox}&WIDTH=400&HEIGHT=300&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF&EXCEPTIONS=text/xml&KEY={VWORLD_KEY}"
+    url = f"https://api.vworld.kr/req/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES={layer}&CRS=EPSG:4326&BBOX={bbox}&WIDTH=400&HEIGHT=300&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF&EXCEPTIONS=text/xml&KEY={VWORLD_KEY}"
     headers = {"User-Agent": "Mozilla/5.0", "Referer": "http://localhost:8501"}
     try:
         res = requests.get(url, headers=headers, timeout=5, verify=False)
@@ -554,7 +564,7 @@ def get_cadastral_map_image(lat, lng):
 
 @st.cache_data(show_spinner=False)
 def get_static_map_image(lat, lng):
-    url = f"[http://api.vworld.kr/req/image?service=image&request=getmap&key=](http://api.vworld.kr/req/image?service=image&request=getmap&key=){VWORLD_KEY}&center={lng},{lat}&crs=EPSG:4326&zoom=17&size=600,400&format=png&basemap=GRAPHIC"
+    url = f"http://api.vworld.kr/req/image?service=image&request=getmap&key={VWORLD_KEY}&center={lng},{lat}&crs=EPSG:4326&zoom=17&size=600,400&format=png&basemap=GRAPHIC"
     try:
         res = requests.get(url, timeout=3)
         if res.status_code == 200 and 'image' in res.headers.get('Content-Type', ''): return BytesIO(res.content)
@@ -880,7 +890,7 @@ def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling
     if uploaded_img: uploaded_img.seek(0); worksheet.insert_image('B6', 'building.png', {'image_data': uploaded_img, 'x_scale': 0.5, 'y_scale': 0.5, 'object_position': 2})
 
     worksheet.write('B22', '위치도', fmt_header); worksheet.merge_range('B23:E35', '', fmt_box)
-    map_img_xls = f"[http://api.vworld.kr/req/image?service=image&request=getmap&key=](http://api.vworld.kr/req/image?service=image&request=getmap&key=){VWORLD_KEY}&center={lng},{lat}&crs=EPSG:4326&zoom=17&size=600,400&format=png&basemap=GRAPHIC"
+    map_img_xls = f"http://api.vworld.kr/req/image?service=image&request=getmap&key={VWORLD_KEY}&center={lng},{lat}&crs=EPSG:4326&zoom=17&size=600,400&format=png&basemap=GRAPHIC"
     try:
         res = requests.get(map_img_xls, timeout=3)
         if res.status_code == 200: worksheet.insert_image('B23', 'map.png', {'image_data': BytesIO(res.content), 'x_scale': 0.7, 'y_scale': 0.7})
@@ -951,9 +961,9 @@ if addr_input:
         else:
             with link_container:
                 col_l1, col_l2 = st.columns(2)
-                with col_l1: st.markdown(f"<a href='[https://map.naver.com/v5/search/](https://map.naver.com/v5/search/){quote_plus(location['full_addr'])}' target='_blank' class='link-btn naver-btn'>📍 네이버지도 위치확인</a>", unsafe_allow_html=True)
+                with col_l1: st.markdown(f"<a href='https://map.naver.com/v5/search/{quote_plus(location['full_addr'])}' target='_blank' class='link-btn naver-btn'>📍 네이버지도 위치확인</a>", unsafe_allow_html=True)
                 with col_l2: 
-                    if location.get('pnu'): st.markdown(f"<a href='[https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu=](https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu=){location['pnu']}&mode=search&isNoScr=script' target='_blank' class='link-btn eum-btn'>📑 토지이음 규제정보 확인</a>", unsafe_allow_html=True)
+                    if location.get('pnu'): st.markdown(f"<a href='https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?pnu={location['pnu']}&mode=search&isNoScr=script' target='_blank' class='link-btn eum-btn'>📑 토지이음 규제정보 확인</a>", unsafe_allow_html=True)
             
             if not st.session_state['zoning']: st.session_state['zoning'] = get_zoning_smart(location['lat'], location['lng'])
             if not st.session_state['fetched_zoning']: st.session_state['fetched_zoning'] = st.session_state['zoning']
