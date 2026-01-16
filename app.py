@@ -363,18 +363,15 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
         ]
     }
     
-    # 1. 사용자 코멘트
     if user_comment:
         points.append(f"📌 {user_comment.strip()[:35]}") 
 
-    # 2. 키워드 기반 (랜덤)
     if env_features:
         random.shuffle(env_features)
         for feat in env_features:
             if feat in marketing_db:
                 points.append(random.choice(marketing_db[feat]))
 
-    # 3. 가격 경쟁력
     if comp_df is not None and not comp_df.empty:
         try:
             sold_df = comp_df[comp_df['구분'].astype(str).str.contains('매각|완료|매매', na=False)]
@@ -398,7 +395,6 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
                     points.append(random.choice(msgs))
         except: pass
 
-    # 4. 수익률
     yield_val = finance['yield']
     if yield_val >= 4.0:
         msgs = [
@@ -419,7 +415,6 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
         ]
         points.append(random.choice(msgs))
 
-    # 부족하면 채워넣기
     fallback_msgs = [
         "■ [희소가치] 매물 잠김 심한 지역 내 오랜만에 등장한 A급 매물",
         "☑ [육각형] 입지, 가격, 상권 3박자 모두 갖춘 보기 드문 투자처",
@@ -564,7 +559,7 @@ def get_static_map_image(lat, lng):
     except: pass
     return None
 
-# [PPT 생성 함수]
+# [PPT 생성 함수 - 오류수정완료]
 def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_points, images_dict, template_binary=None):
     bld_name = info.get('bldNm')
     if not bld_name or bld_name == '-':
@@ -580,7 +575,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
 
     ai_points_str = "\n".join(selling_points[:5]) if selling_points else "분석된 특징이 없습니다."
 
-    # info['platArea'] 등은 이제 사용자가 입력한 값(float)을 그대로 사용
+    # 값 포맷팅 (수기입력 값 반영)
     plat_m2 = f"{info['platArea']:,}" if info['platArea'] else "-"
     plat_py = f"{info['platArea'] * 0.3025:,.1f}" if info['platArea'] else "-"
     tot_m2 = f"{info['totArea']:,}" if info['totArea'] else "-"
@@ -599,6 +594,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
     market_price_py_val = finance.get('land_pyeong_price_val', 0)
     market_price_str = f"평 {market_price_py_val:,.0f}만원"
 
+    # [중요] NameError 방지용 ctx_vals 정의 (함수 시작 부분)
     ctx_vals = {
         'plat_m2': plat_m2, 'plat_py': plat_py,
         'tot_m2': tot_m2, 'tot_py': tot_py,
@@ -624,9 +620,9 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{공시지가}}": lp_str_final,
             "{{공시지가 총액}}": total_lp_str_final,
             "{{준공년도}}": use_date,
-            "{{건물규모}}": info.get('scale_str', '-'), # 수기입력된 값 사용
-            "{{건폐율}}": info.get('bcRat_str', '-'),   # 수기입력된 값 사용
-            "{{용적률}}": info.get('vlRat_str', '-'),   # 수기입력된 값 사용(사실상 PPT 템플릿엔 건폐/용적 통합키로 전달해야할수도 있지만 여기선 개별키가 없으므로 텍스트 치환 로직에서 처리)
+            "{{건물규모}}": info.get('scale_str', '-'),
+            "{{건폐율}}": info.get('bcRat_str', '-'),  # 수정: info에서 가져옴 (원래는 bcRat였으나 수기입력으로 인해 bcRat_str로 저장되지 않았다면 예외처리 필요)
+            "{{용적률}}": info.get('vlRat_str', '-'),
             "{{승강기}}": info.get('rideUseElvtCnt', '-'),
             "{{주차대수}}": info.get('parking', '-'),
             "{{건물주구조}}": info.get('strctCdNm', '-'),
@@ -644,6 +640,26 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
             "{{건축물대장}}": "",
             "{{건물사진}}": ""
         }
+        
+        # 건폐/용적 수기입력값 매핑 보정 (bc_vl_str를 사용하거나 개별 값 사용)
+        # 위 UI 코드에서 bc_vl_str로 통합입력했으므로, 템플릿의 {{건폐율}}, {{용적률}}을 찾아서 처리해야함
+        # 하지만 UI에서 bc_vl_str는 "50% / 200%" 처럼 들어감.
+        # 단순히 텍스트 치환을 위해 data_map에 임시 값 넣고, 아래 loop에서 bc_vl_str를 쪼개서 넣거나 통으로 넣어야 함.
+        # 여기서는 편의상 건폐/용적 통합 텍스트를 {{건폐율}} 자리에 넣고 {{용적률}}은 빈칸으로 두거나, 
+        # 사용자가 "50%" "200%" 따로 입력하게 하지 않고 합쳐서 입력했으므로 템플릿이 {{건폐율}}/{{용적률}} 형태라면
+        # replace 로직에서 적절히 처리해야 함. 
+        # 가장 안전한 방법: UI 입력값을 그대로 data_map에 넣기. 
+        # UI 코드에서 bc_vl_str에 "50% / 200%"가 들어있음. 
+        # 만약 템플릿에 {{건/용}} 같은 통합 키가 없고 {{건폐율}}, {{용적률}} 따로 있다면 
+        # UI에서 입력받은 bc_vl_str을 분리해서 넣어주는게 좋음. 
+        # 하지만 사용자가 "50/200"이라 썼는지 "50% / 200%"라 썼는지 모름.
+        # 따라서 여기서는 data_map의 {{건폐율}}에 info['bc_vl_str'] 전체를 넣고, {{용적률}}은 공란 처리하는 방식이나
+        # 혹은 UI에서 건폐, 용적을 따로 입력받는게 낫지만, 요청사항대로 수기작성 "건폐/용적률" 하나로 퉁쳤으므로 
+        # {{건폐율}} 키워드가 발견되면 그 자리에 bc_vl_str 전체를 넣겠습니다.
+
+        if 'bc_vl_str' in info:
+             data_map["{{건폐율}}"] = info['bc_vl_str']
+             data_map["{{용적률}}"] = "" # 겹쳐서 나오지 않게
 
         def replace_text_in_frame(text_frame, mapper, ctx):
             for p in text_frame.paragraphs:
@@ -651,9 +667,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                 
                 if "{{AI물건분석내용 4가지 }}" in p_text:
                     p.text = str(mapper["{{AI물건분석내용 4가지 }}"])
-                    for r in p.runs:
-                        r.font.size = Pt(10)
-                        r.font.name = "맑은 고딕"
+                    for r in p.runs: r.font.size = Pt(10); r.font.name = "맑은 고딕"
                     return
 
                 if "{{공시지가}}" in p_text:
@@ -665,10 +679,6 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
                     for r in p.runs: r.font.color.rgb = deep_red; r.font.bold = True; r.font.size = Pt(12)
                     return
 
-                # 건폐율/용적률 처리 (수기 입력값이 '50% / 200%' 형태일 수 있음)
-                # 템플릿에 {{건폐율}}, {{용적률}} 키워드가 따로 있다면 각각 매핑, 합쳐져 있다면 하나로 처리해야 함.
-                # 위 data_map에서 이미 값은 준비됨.
-                
                 financial_keys = ["{{보증금}}", "{{월임대료}}", "{{관리비}}", "{{융자금}}"]
                 found_fin_key = None
                 for k in financial_keys:
@@ -790,7 +800,7 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         prs.save(output)
         return output.getvalue()
     
-    # 2. 템플릿 없는 경우 (기본 PPT)
+    # 2. 템플릿 없는 경우 (기본 PPT) -> [수정] KeyError 방지 (API 키 대신 수기값 사용)
     else:
         prs = Presentation(); prs.slide_width = Cm(21.0); prs.slide_height = Cm(29.7)
         slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -825,12 +835,12 @@ def create_pptx(info, full_addr, finance, zoning, lat, lng, land_price, selling_
         table = slide.shapes.add_table(11, 4, Cm(10.8), Cm(3.5), Cm(9.2), Cm(11.5)).table
         table.columns[0].width = Cm(2.3); table.columns[1].width = Cm(2.3); table.columns[2].width = Cm(2.3); table.columns[3].width = Cm(2.3)
         
-        lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
+        # [수정] KeyError 방지: 직접 포맷팅
         data = [
-            ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", f"{lp_py:,.0f}만/평"],
-            ["대지", info['platArea_ppt'], "도로", "M"], ["연면적", info['totArea_ppt'], "준공", info['useAprDay']],
-            ["지상", info['totArea_ppt'], "규모", info.get('scale_str', '-')], ["건축", info['archArea_ppt'], "승강기", info['rideUseElvtCnt']],
-            ["건/용", info.get('bc_vl_str', '-'), "주차", info['parking'].split('(')[0]], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
+            ["소재지", full_addr, "", ""], ["용도", zoning, "공시지가", lp_str_final],
+            ["대지", f"{info['platArea']:.2f}㎡ ({info['platArea']*0.3025:.1f}평)", "도로", "M"], ["연면적", f"{info['totArea']:.2f}㎡ ({info['totArea']*0.3025:.1f}평)", "준공", use_date],
+            ["지상", f"{info['totArea']:.2f}㎡", "규모", info.get('scale_str', '-')], ["건축", f"{info.get('archArea_val',0):.2f}㎡", "승강기", info.get('rideUseElvtCnt','-')],
+            ["건/용", info.get('bc_vl_str', '-'), "주차", info.get('parking','-')], ["주용도", info.get('mainPurpsCdNm','-'), "주구조", info.get('strctCdNm','-')],
             ["보증금", f"{finance['deposit']:,.0f}만", "융자", f"{finance['loan']:,}억"], ["임대료", f"{finance['rent']:,}만", "수익률", f"{finance['yield']:.1f}%"],
             ["관리비", f"{finance['maintenance']:,}만", "매도가", f"{finance['price']:,}억"]
         ]
@@ -885,15 +895,19 @@ def create_excel(info, full_addr, finance, zoning, lat, lng, land_price, selling
 
     worksheet.write('G5', '건물개요', fmt_header)
     lp_py = (land_price / 10000) / 0.3025 if land_price > 0 else 0
-    # 엑셀에도 수기 입력값 반영
     bcvl_text = info.get('bc_vl_str', '-')
     scale_text = info.get('scale_str', '-')
     
+    # 엑셀 데이터도 수기입력 값 기반으로 생성 (KeyError 방지)
+    plat_str = f"{info['platArea']:,.1f}㎡"
+    tot_str = f"{info['totArea']:,.1f}㎡"
+    arch_str = f"{info.get('archArea_val',0):,.1f}㎡"
+    
     table_data_xls = [
-        ["소재지", full_addr, "용도", zoning], ["공시지가", f"{lp_py:,.0f}만/평", "대지", info['platArea_ppt']], 
-        ["도로", "6M", "연면적", info['totArea_ppt']], ["준공", info['useAprDay'], "지상", info['totArea_ppt']],
-        ["규모", scale_text, "건축", info['archArea_ppt']], ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
-        ["주차", info['parking'].split('(')[0], "주용도", info.get('mainPurpsCdNm','-')], ["주구조", info.get('strctCdNm','-'), "보증금", f"{finance['deposit']:,.0f}만"],
+        ["소재지", full_addr, "용도", zoning], ["공시지가", f"{lp_py:,.0f}만/평", "대지", plat_str], 
+        ["도로", "6M", "연면적", tot_str], ["준공", info['useAprDay'], "지상", tot_str],
+        ["규모", scale_text, "건축", arch_str], ["승강기", info['rideUseElvtCnt'], "건/용", bcvl_text],
+        ["주차", info.get('parking','-'), "주용도", info.get('mainPurpsCdNm','-')], ["주구조", info.get('strctCdNm','-'), "보증금", f"{finance['deposit']:,.0f}만"],
         ["융자", f"{finance['loan']:,}억", "임대료", f"{finance['rent']:,}만"], ["수익률", f"{finance['yield']:.1f}%", "관리비", f"{finance['maintenance']:,}만"],
         ["매도가", f"{finance['price']:,}억", "", ""] 
     ]
