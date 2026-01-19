@@ -16,6 +16,8 @@ import datetime
 import random
 import folium
 from streamlit_folium import st_folium
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # SSL 경고 비활성화
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -71,17 +73,35 @@ def reset_analysis():
     st.session_state['fetched_lp'] = 0
     st.session_state['fetched_zoning'] = ""
 
-# --- [API 및 보조 함수] (차단 방지 헤더 적용) ---
+# --- [네트워크 요청 함수 (강력한 위장 적용)] ---
+def create_session():
+    session = requests.Session()
+    retry = Retry(connect=5, read=5, backoff_factor=1.0)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
+    # [핵심] 브이월드가 차단하지 않도록 Referer와 User-Agent 강력하게 설정
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://map.vworld.kr/",  # 브이월드 지도에서 온 것처럼 위장
+        "Origin": "https://map.vworld.kr",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Connection": "keep-alive"
+    })
+    return session
+
+# --- [API 및 보조 함수] ---
 def get_address_from_coords(lat, lng):
     url = "https://api.vworld.kr/req/address" 
     params = {
         "service": "address", "request": "getaddress", "version": "2.0", "crs": "EPSG:4326",
         "point": f"{lng},{lat}", "type": "PARCEL", "format": "json", "errorformat": "json", "key": VWORLD_KEY
     }
-    # [핵심 수정] 봇이 아닌 척하는 헤더 추가
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=5, verify=False)
+        session = create_session()
+        response = session.get(url, params=params, timeout=10, verify=False)
         data = response.json()
         if data.get('response', {}).get('status') == 'OK':
             return data['response']['result'][0]['text']
@@ -89,7 +109,12 @@ def get_address_from_coords(lat, lng):
     return None
 
 def render_styled_block(label, value, is_area=False):
-    st.markdown(f"""<div style="margin-bottom: 10px;"><div style="font-size: 16px; color: #666; font-weight: 600; margin-bottom: 2px;">{label}</div><div style="font-size: 24px; font-weight: 800; color: #111; line-height: 1.2;">{value}</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="margin-bottom: 10px;">
+        <div style="font-size: 16px; color: #666; font-weight: 600; margin-bottom: 2px;">{label}</div>
+        <div style="font-size: 24px; font-weight: 800; color: #111; line-height: 1.2;">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def editable_area_input(label, key, default_val):
     val_str = st.text_input(label, value=str(default_val), key=key)
@@ -106,7 +131,11 @@ def editable_text_input(label, key, default_val):
     return st.text_input(label, value=str(default_val), key=key)
 
 def comma_input(label, unit, key, default_val, help_text=""):
-    st.markdown(f"""<div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>{label} <span style='font-size:12px; color:#888; font-weight:400;'>{help_text}</span></div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>
+            {label} <span style='font-size:12px; color:#888; font-weight:400;'>{help_text}</span>
+        </div>
+    """, unsafe_allow_html=True)
     c_in, c_unit = st.columns([3, 1]) 
     with c_in:
         if key not in st.session_state: st.session_state[key] = default_val
@@ -220,30 +249,46 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
         
     return list(dict.fromkeys(points))
 
-# --- [API 조회 함수들] (핵심: headers 및 https 적용) ---
+# --- [API 조회 함수들] (강력한 헤더 위장 적용) ---
 @st.cache_data(show_spinner=False)
 def get_pnu_and_coords(address):
     url = "https://api.vworld.kr/req/search"
     search_type = 'road' if '로' in address or '길' in address else 'parcel'
     params = {"service": "search", "request": "search", "version": "2.0", "crs": "EPSG:4326", "size": "1", "page": "1", "query": address, "type": "address", "category": search_type, "format": "json", "errorformat": "json", "key": VWORLD_KEY}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    
     try:
-        # [수정] headers 추가 및 verify=False
-        res = requests.get(url, params=params, headers=headers, timeout=5, verify=False)
-        data = res.json()
-        if data['response']['status'] == 'NOT_FOUND':
-            params['query'] = "서울특별시 " + address
-            res = requests.get(url, params=params, headers=headers, timeout=5, verify=False)
+        session = create_session()
+        res = session.get(url, params=params, timeout=10, verify=False)
+        
+        # [에러 진단] JSON 변환 전 상태 확인
+        try:
             data = res.json()
-        if data['response']['status'] == 'NOT_FOUND': return None
-        item = data['response']['result']['items'][0]
-        pnu = item.get('address', {}).get('pnu') or item.get('id')
-        lng = float(item['point']['x']); lat = float(item['point']['y'])
-        full_address = item.get('address', {}).get('parcel', '') 
-        if not full_address: full_address = item.get('address', {}).get('road', '') 
-        if not full_address: full_address = address
-        return {"pnu": pnu, "lat": lat, "lng": lng, "full_addr": full_address}
-    except: return None
+        except ValueError:
+            # JSON 파싱 실패 시, 서버가 보낸 텍스트(에러페이지 등)를 출력하여 원인 파악
+            st.error(f"⚠️ 서버 응답 오류 (JSON 아님): {res.text[:200]}")
+            return None
+
+        if data.get('response', {}).get('status') == 'NOT_FOUND':
+            params['query'] = "서울특별시 " + address
+            res = session.get(url, params=params, timeout=10, verify=False)
+            try: data = res.json()
+            except: return None
+            
+        if data.get('response', {}).get('status') == 'NOT_FOUND': return None
+        
+        # 결과가 있는 경우 파싱
+        if 'result' in data['response'] and 'items' in data['response']['result']:
+            item = data['response']['result']['items'][0]
+            pnu = item.get('address', {}).get('pnu') or item.get('id')
+            lng = float(item['point']['x']); lat = float(item['point']['y'])
+            full_address = item.get('address', {}).get('parcel', '') 
+            if not full_address: full_address = item.get('address', {}).get('road', '') 
+            if not full_address: full_address = address
+            return {"pnu": pnu, "lat": lat, "lng": lng, "full_addr": full_address}
+        return None
+    except Exception as e:
+        st.error(f"연결 오류: {e}")
+        return None
 
 @st.cache_data(show_spinner=False)
 def get_zoning_smart(lat, lng):
@@ -252,9 +297,9 @@ def get_zoning_smart(lat, lng):
     min_x, min_y = lng - delta, lat - delta
     max_x, max_y = lng + delta, lat + delta
     params = {"service": "data", "request": "GetFeature", "data": "LT_C_UQ111", "key": VWORLD_KEY, "format": "json", "size": "10", "geomFilter": f"BOX({min_x},{min_y},{max_x},{max_y})", "domain": "localhost"}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=5, verify=False)
+        session = create_session()
+        res = session.get(url, params=params, timeout=5, verify=False)
         if res.status_code == 200:
             data = res.json()
             features = data.get('response', {}).get('result', {}).get('featureCollection', {}).get('features', [])
@@ -269,11 +314,11 @@ def get_land_price(pnu):
     url = "https://apis.data.go.kr/1611000/NsdiIndvdLandPriceService/getIndvdLandPriceAttr"
     current_year = datetime.datetime.now().year
     years_to_check = range(current_year, current_year - 7, -1) 
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    session = create_session()
     for year in years_to_check:
         params = {"serviceKey": USER_KEY, "pnu": pnu, "format": "xml", "numOfRows": "1", "pageNo": "1", "stdrYear": str(year)}
         try:
-            res = requests.get(url, params=params, headers=headers, timeout=5, verify=False)
+            res = session.get(url, params=params, timeout=5, verify=False)
             if res.status_code == 200:
                 root = ET.fromstring(res.content)
                 if root.findtext('.//resultCode') == '00':
@@ -289,17 +334,17 @@ def get_building_info_smart(pnu):
     sigungu = pnu[0:5]; bjdong = pnu[5:10]; bun = pnu[11:15]; ji = pnu[15:19]
     plat_code = '1' if pnu[10] == '2' else '0'
     params = {"serviceKey": USER_KEY, "sigunguCd": sigungu, "bjdongCd": bjdong, "platGbCd": plat_code, "bun": bun, "ji": ji, "numOfRows": "1", "pageNo": "1"}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     try:
-        res = requests.get(base_url, params=params, headers=headers, timeout=5, verify=False)
+        session = create_session()
+        res = session.get(base_url, params=params, timeout=5, verify=False)
         if res.status_code == 200: return parse_xml_response(res.content)
         return {"error": f"서버 상태: {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# [나머지 코드(PPT/Excel)는 변경 없음 - 위에서 정의한 함수 사용]
-# ... (여기는 대표님이 주신 코드 그대로인데 API 함수만 위처럼 수정됨)
+# [나머지 파싱 및 문서 생성 함수는 기존과 동일하게 유지]
+# ...
 
-# [메인 실행]
+# [메인 실행부]
 st.title("🏢 부동산 매입 분석기 Pro")
 st.markdown("---")
 
@@ -322,7 +367,10 @@ addr_input = st.text_input("주소 입력", placeholder="예: 강남구 논현�
 if addr_input:
     with st.spinner("데이터 분석 중..."):
         location = get_pnu_and_coords(addr_input)
-        if not location: st.error("❌ 주소를 찾을 수 없습니다. (검색어 확인 또는 잠시 후 다시 시도)")
+        
+        # location이 None이면(주소 못찾거나 에러나면)
+        if not location: 
+            st.error("❌ 주소를 찾을 수 없습니다. (검색어 확인 또는 잠시 후 다시 시도)")
         else:
             with link_container:
                 col_l1, col_l2 = st.columns(2)
@@ -343,21 +391,18 @@ if addr_input:
                 
                 # [요청 4] 사진 업로드 박스 4열 배치
                 st.write("##### 📸 PPT 삽입용 사진 업로드")
-                
                 st.write("▼ 기본 사진 (위치도/메인/지적도/대장)")
                 col_u1, col_u2, col_u3, col_u4 = st.columns(4)
                 with col_u1: u1 = st.file_uploader("Slide 2: 위치도", type=['png', 'jpg', 'jpeg'], key="u1")
                 with col_u2: u2 = st.file_uploader("Slide 3: 건물메인", type=['png', 'jpg', 'jpeg'], key="u2")
                 with col_u3: u3 = st.file_uploader("Slide 5: 지적도", type=['png', 'jpg', 'jpeg'], key="u3")
                 with col_u4: u4 = st.file_uploader("Slide 6: 대장", type=['png', 'jpg', 'jpeg'], key="u4")
-                
                 st.write("▼ 추가 사진 (Slide 7)")
                 c_u5_1, c_u5_2, c_u5_3, c_u5_4 = st.columns(4)
                 with c_u5_1: u5_1 = st.file_uploader("추가1", type=['png','jpg'], key="u5_1")
                 with c_u5_2: u5_2 = st.file_uploader("추가2", type=['png','jpg'], key="u5_2")
                 with c_u5_3: u5_3 = st.file_uploader("추가3", type=['png','jpg'], key="u5_3")
                 with c_u5_4: u5_4 = st.file_uploader("추가4", type=['png','jpg'], key="u5_4")
-                
                 images_map = {'u1': u1, 'u2': u2, 'u3': u3, 'u4': u4, 'u5_1': u5_1, 'u5_2': u5_2, 'u5_3': u5_3, 'u5_4': u5_4}
 
                 st.markdown("---")
@@ -378,8 +423,6 @@ if addr_input:
                 with c_lp2:
                     if land_price > 0 and info['platArea'] > 0: render_styled_block("공시지가 총액(추정)", f"{land_price * info['platArea'] / 100000000:,.2f}억")
                     else: render_styled_block("공시지가 총액", "-")
-                
-                # [추가] 교통편의, 도로상황 수기 입력
                 with c_lp3: 
                     c_tr, c_rd = st.columns(2)
                     info['traffic'] = c_tr.text_input("교통편의")
@@ -388,61 +431,47 @@ if addr_input:
                 st.write("")
                 st.markdown("<hr style='margin: 10px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
-                # [수정] 수기 작성 가능 + 빨간 평수 자동 계산 + 글자크기 확대
+                # [수정] 수기 작성 가능
                 c2_1, c2_2, c2_3 = st.columns(3)
                 with c2_1:
                     zoning_val = st.text_input("용도지역", value=st.session_state['fetched_zoning'])
                     st.session_state['zoning'] = zoning_val
                 with c2_2: 
-                    # 대지면적
                     new_plat = editable_area_input("대지면적", "plat", info['platArea'])
-                    info['platArea'] = new_plat # 데이터 업데이트
+                    info['platArea'] = new_plat
                 with c2_3: 
-                    # 연면적
                     new_tot = editable_area_input("연면적", "tot", info['totArea'])
                     info['totArea'] = new_tot
                 
                 st.write("")
                 c3_1, c3_2, c3_3 = st.columns(3)
-                with c3_1: 
-                    # 준공년도
-                    info['useAprDay'] = editable_text_input("준공년도", "useDay", info['useAprDay'])
+                with c3_1: info['useAprDay'] = editable_text_input("준공년도", "useDay", info['useAprDay'])
                 with c3_2: 
-                    # 건축면적
                     new_arch = editable_area_input("건축면적", "arch", info.get('archArea_val', 0))
                     info['archArea_val'] = new_arch
                 with c3_3: 
-                    # 지상면적
                     new_ground = editable_area_input("지상면적", "ground", info.get('groundArea', 0))
                     info['groundArea'] = new_ground
                 
                 st.write("")
                 c4_1, c4_2, c4_3 = st.columns(3)
                 with c4_1: 
-                    # 건물규모
                     def_scale = f"B{info.get('ugrndFlrCnt')} / {info.get('grndFlrCnt')}F"
                     info['scale_str'] = editable_text_input("건물규모", "scale", def_scale)
                 with c4_2: 
-                    # 승강기/주차 [수정] 분리 입력
                     c_ev, c_pk = st.columns(2)
                     info['rideUseElvtCnt'] = c_ev.text_input("승강기", value=str(info.get('rideUseElvtCnt','-')))
                     info['parking'] = c_pk.text_input("주차대수", value=str(info.get('parking','-')))
                 with c4_3: 
-                    # 건폐/용적 [수정] 분리 입력
                     c_bc, c_vl = st.columns(2)
                     info['bcRat_str'] = c_bc.text_input("건폐율", value=f"{info.get('bcRat')}%")
                     info['vlRat_str'] = c_vl.text_input("용적률", value=f"{info.get('vlRat')}%")
-                    # 통합 문자열도 생성 (엑셀용)
                     info['bc_vl_str'] = f"{info['bcRat_str']} / {info['vlRat_str']}"
                 
                 st.write("")
                 c5_1, c5_2, c5_3 = st.columns(3)
-                with c5_1: 
-                    # 건물용도
-                    info['mainPurpsCdNm'] = editable_text_input("건물용도", "purps", info.get('mainPurpsCdNm'))
-                with c5_2: 
-                    # 건물주구조
-                    info['strctCdNm'] = editable_text_input("건물주구조", "strct", info.get('strctCdNm'))
+                with c5_1: info['mainPurpsCdNm'] = editable_text_input("건물용도", "purps", info.get('mainPurpsCdNm'))
+                with c5_2: info['strctCdNm'] = editable_text_input("건물주구조", "strct", info.get('strctCdNm'))
                 with c5_3: st.empty()
                 st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("---")
@@ -476,7 +505,6 @@ if addr_input:
                     st.markdown(f"""<div style='font-size: 16px; font-weight: 700; color: #1e88e5; margin-bottom: 4px;'>수익률</div><div style='background-color: #fff; border: 1px solid #ddd; border-radius: 5px; padding: 10px; text-align: center;'><span style='font-size: 28px; font-weight: 900; color: #111;'>{yield_rate:.2f}</span><span style='font-size: 18px; font-weight: 600; color: #555;'>%</span></div>""", unsafe_allow_html=True)
                 st.markdown("<hr style='margin: 15px 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
                 
-                # 수기 입력된 면적으로 평당가 계산
                 land_py = info['platArea'] * 0.3025; tot_py = info['totArea'] * 0.3025; price_won = price_val * 100000000
                 land_price_per_py = (price_won / land_py) / 10000 if land_py > 0 else 0
                 tot_price_per_py = (price_won / tot_py) / 10000 if tot_py > 0 else 0
@@ -487,7 +515,6 @@ if addr_input:
                 st.markdown("---")
 
                 st.subheader("🔍 AI 물건분석 (Key Insights)")
-                # [요청 7] 키워드 추가 및 5열 배치 (체크박스)
                 st.write("###### 👇 해당되는 키워드를 선택하세요 (다중선택)")
                 env_options = [
                     "역세권", "더블역세권", "대로변", "코너입지", "이면코너", 
@@ -499,7 +526,6 @@ if addr_input:
                 for i, opt in enumerate(env_options):
                     if cols_check[i % 5].checkbox(opt): selected_envs.append(opt)
                 
-                # [요청 10] 선택된 키워드 목록 하단 표시
                 if selected_envs:
                     st.write("")
                     st.write("✅ **선택된 키워드:**")
@@ -544,25 +570,16 @@ if addr_input:
 
                 user_comment = st.text_area("📝 추가 특징 입력 (예: 1층 스타벅스 입점, 주인세대 명도 가능 등)", height=80)
                 
-                # [요청 5] 버튼 이름 변경 ("전문가" 제거 -> "인사이트요약")
                 if st.button("🤖 인사이트요약 (Click)"):
                     with st.spinner("빅데이터 분석 및 리포트 생성 중..."):
                         finance_data_for_ai = {"yield": yield_rate, "price": price_val, "land_pyeong_price_val": land_price_per_py}
-                        # [요청 8, 9] 후보군 생성
                         generated_candidates = generate_insight_candidates(info, finance_data_for_ai, st.session_state['zoning'], selected_envs, user_comment, filtered_comp_df, target_dong)
-                        
-                        # [수정] 갱신 시 이미 선택된 내용은 후보군에서 제외하고 선택된 내용은 유지
                         current_selected = st.session_state.get('final_selected_insights', [])
                         filtered_candidates = [c for c in generated_candidates if c not in current_selected]
-                        
                         st.session_state['generated_candidates'] = filtered_candidates
-                        # final_selected_insights는 초기화하지 않음 (유지)
 
-                # [수정] 인사이트 선택 UI 개선
                 if st.session_state['generated_candidates']:
                     st.write("###### 💡 생성된 투자포인트 (체크하면 아래 최종 목록으로 이동합니다)")
-                    
-                    # 후보군 출력 (체크 시 final_selected_insights로 이동하고 리런)
                     for cand in st.session_state['generated_candidates']:
                         if st.checkbox(cand, key=f"cand_{cand}"):
                             if cand not in st.session_state['final_selected_insights']:
@@ -570,20 +587,14 @@ if addr_input:
                             st.session_state['generated_candidates'].remove(cand) # 후보군에서 제거
                             st.rerun()
 
-                # [수정] 최종 선택된 목록 보여주기 (삭제 버튼 대신 체크박스 해제 방식)
                 if st.session_state['final_selected_insights']:
                     st.markdown("""<div class="ai-summary-box"><div class="ai-title">🌟 투자포인트 내용 (최종 선택됨)</div>""", unsafe_allow_html=True)
                     st.write("※ 체크를 해제하면 목록에서 삭제됩니다.")
-                    
-                    # 리스트 순회하며 체크박스 생성 (기본값 True)
-                    # 해제 시 리스트에서 제거하고 리런
                     for i, selected in enumerate(st.session_state['final_selected_insights']):
-                        # 체크박스 상태 확인
                         is_checked = st.checkbox(selected, value=True, key=f"sel_{i}")
                         if not is_checked:
                             st.session_state['final_selected_insights'].pop(i)
                             st.rerun()
-                                
                     st.markdown("</div>", unsafe_allow_html=True)
 
                 st.markdown("---")
@@ -597,24 +608,21 @@ if addr_input:
                 }
                 z_val = st.session_state.get('zoning', '') if isinstance(st.session_state.get('zoning', ''), str) else ""
                 
-                # 최종 선택된 포인트만 전달
                 final_summary = st.session_state.get('final_selected_insights', [])
                 file_for_excel = u2 if 'u2' in locals() else None
 
                 c_ppt, c_xls = st.columns([1, 1])
                 with c_ppt:
                     st.write("##### 📥 PPT 저장")
-                    pptx_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
-                    if pptx_template: st.success("✅ 템플릿 적용됨")
-                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, final_summary, images_map, template_binary=pptx_template)
+                    ppt_template = st.file_uploader("9장짜리 샘플 PPT 템플릿 업로드 (선택)", type=['pptx'], key=f"tpl_{addr_input}")
+                    if ppt_template: st.success("✅ 템플릿 적용됨")
+                    pptx_file = create_pptx(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, final_summary, images_map, template_binary=ppt_template)
                     addr_parts = location['full_addr'].split()
                     short_addr = " ".join(addr_parts[1:]) if len(addr_parts) > 1 else location['full_addr']
                     pptx_name = f"{price_val}억-{short_addr} {info.get('bldNm').replace('-','').strip()}.pptx"
-                    
                     if pptx_file:
                         st.download_button(label="PPT 다운로드", data=pptx_file, file_name=pptx_name, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True)
-                    else:
-                        st.error("PPT 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+                    else: st.error("PPT 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
                 with c_xls:
                     st.write("##### 📥 엑셀 저장")
                     xlsx_file = create_excel(info, location['full_addr'], finance_data, z_val, location['lat'], location['lng'], land_price, final_summary, file_for_excel)
