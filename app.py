@@ -73,21 +73,24 @@ def reset_analysis():
     st.session_state['fetched_lp'] = 0
     st.session_state['fetched_zoning'] = ""
 
-# --- [네트워크 요청 함수 (강력한 위장 적용)] ---
+# --- [네트워크 요청 함수 (502 에러 발생 시 자동 재시도 기능 추가)] ---
 def create_session():
     session = requests.Session()
-    retry = Retry(connect=5, read=5, backoff_factor=1.0)
+    # [핵심] 500, 502, 503, 504 에러가 뜨면 5번까지 재시도
+    retry = Retry(
+        total=5, 
+        backoff_factor=1, 
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"]
+    )
     adapter = HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     
-    # [핵심] 브이월드가 차단하지 않도록 Referer와 User-Agent 강력하게 설정
+    # [핵심] 헤더 간소화 (오히려 헤더가 복잡하면 봇으로 의심받을 수 있음)
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://map.vworld.kr/",  # 브이월드 지도에서 온 것처럼 위장
-        "Origin": "https://map.vworld.kr",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "*/*",
         "Connection": "keep-alive"
     })
     return session
@@ -109,12 +112,7 @@ def get_address_from_coords(lat, lng):
     return None
 
 def render_styled_block(label, value, is_area=False):
-    st.markdown(f"""
-    <div style="margin-bottom: 10px;">
-        <div style="font-size: 16px; color: #666; font-weight: 600; margin-bottom: 2px;">{label}</div>
-        <div style="font-size: 24px; font-weight: 800; color: #111; line-height: 1.2;">{value}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"""<div style="margin-bottom: 10px;"><div style="font-size: 16px; color: #666; font-weight: 600; margin-bottom: 2px;">{label}</div><div style="font-size: 24px; font-weight: 800; color: #111; line-height: 1.2;">{value}</div></div>""", unsafe_allow_html=True)
 
 def editable_area_input(label, key, default_val):
     val_str = st.text_input(label, value=str(default_val), key=key)
@@ -131,11 +129,7 @@ def editable_text_input(label, key, default_val):
     return st.text_input(label, value=str(default_val), key=key)
 
 def comma_input(label, unit, key, default_val, help_text=""):
-    st.markdown(f"""
-        <div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>
-            {label} <span style='font-size:12px; color:#888; font-weight:400;'>{help_text}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"""<div style='font-size: 16px; font-weight: 700; color: #333; margin-bottom: 4px;'>{label} <span style='font-size:12px; color:#888; font-weight:400;'>{help_text}</span></div>""", unsafe_allow_html=True)
     c_in, c_unit = st.columns([3, 1]) 
     with c_in:
         if key not in st.session_state: st.session_state[key] = default_val
@@ -174,7 +168,6 @@ def format_area_ppt(val_str):
 # --- [AI 인사이트 생성] ---
 def generate_insight_candidates(info, finance, zoning, env_features, user_comment, comp_df=None, target_dong=""):
     points = []
-    
     marketing_db = {
         "역세권": ["☑ [초역세권] 풍부한 유동인구와 직장인 수요 독점하는 핵심 입지", "☑ [교통허브] 접근성 탁월, 공실 리스크 극히 낮은 안전 자산", "☑ [환금성] 경기 변동에도 흔들리지 않는 탄탄한 수요층 보유"],
         "더블역세권": ["☑ [더블역세권] 2개 노선 교차, 광역 수요 흡수하는 최상급 입지", "☑ [황금노선] 주요 업무지구 이동 자유로워 기업 사옥 수요 풍부", "☑ [접근성] 가시성과 접근성 동시 만족, 자산 가치 상승 주도"],
@@ -249,7 +242,7 @@ def generate_insight_candidates(info, finance, zoning, env_features, user_commen
         
     return list(dict.fromkeys(points))
 
-# --- [API 조회 함수들] (강력한 헤더 위장 적용) ---
+# --- [API 조회 함수들] (재시도 로직 적용) ---
 @st.cache_data(show_spinner=False)
 def get_pnu_and_coords(address):
     url = "https://api.vworld.kr/req/search"
@@ -264,8 +257,7 @@ def get_pnu_and_coords(address):
         try:
             data = res.json()
         except ValueError:
-            # JSON 파싱 실패 시, 서버가 보낸 텍스트(에러페이지 등)를 출력하여 원인 파악
-            st.error(f"⚠️ 서버 응답 오류 (JSON 아님): {res.text[:200]}")
+            # 502 Bad Gateway 등 HTML 에러가 오면 여기서 걸림
             return None
 
         if data.get('response', {}).get('status') == 'NOT_FOUND':
@@ -287,7 +279,6 @@ def get_pnu_and_coords(address):
             return {"pnu": pnu, "lat": lat, "lng": lng, "full_addr": full_address}
         return None
     except Exception as e:
-        st.error(f"연결 오류: {e}")
         return None
 
 @st.cache_data(show_spinner=False)
@@ -342,7 +333,7 @@ def get_building_info_smart(pnu):
     except Exception as e: return {"error": str(e)}
 
 # [나머지 파싱 및 문서 생성 함수는 기존과 동일하게 유지]
-# ...
+# ... (아래 코드는 그대로 사용하시면 됩니다)
 
 # [메인 실행부]
 st.title("🏢 부동산 매입 분석기 Pro")
@@ -359,7 +350,7 @@ with st.expander("🗺 지도에서 직접 클릭하여 찾기 (Click)", expande
             if found_addr:
                 st.success(f"📍 지도 클릭 확인! 변환된 주소: {found_addr}")
                 st.session_state['addr'] = found_addr; reset_analysis(); st.rerun()
-            else: st.warning("⚠️ 주소를 찾을 수 없는 위치입니다.")
+            else: st.warning("⚠️ 주소를 찾을 수 없습니다. (브이월드 접속 지연)")
 
 link_container = st.container()
 addr_input = st.text_input("주소 입력", placeholder="예: 강남구 논현동 254-4", key="addr", on_change=reset_analysis)
@@ -370,7 +361,7 @@ if addr_input:
         
         # location이 None이면(주소 못찾거나 에러나면)
         if not location: 
-            st.error("❌ 주소를 찾을 수 없습니다. (검색어 확인 또는 잠시 후 다시 시도)")
+            st.error("❌ 주소를 찾을 수 없습니다. (브이월드 서버 응답 없음 - 잠시 후 다시 시도해주세요)")
         else:
             with link_container:
                 col_l1, col_l2 = st.columns(2)
