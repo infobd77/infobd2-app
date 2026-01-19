@@ -1,9 +1,9 @@
 streamlit
-requests
 pandas
+requests
 python-pptx
-xlsxwriter
-urllib3
+XlsxWriter
 folium
 streamlit-folium
+urllib3
 openpyxl
